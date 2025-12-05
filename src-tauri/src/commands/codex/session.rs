@@ -775,6 +775,7 @@ async fn execute_codex_process(
     let _app_handle_stderr = app_handle.clone(); // Reserved for future stderr event emission
     let app_handle_complete = app_handle.clone();
     let session_id_stdout = session_id.clone();  // Clone for stdout task
+    let session_id_stderr = session_id.clone();  // Clone for stderr task
     let session_id_complete = session_id.clone();
 
     // FIX: Emit session init event immediately so frontend can subscribe to the correct channel
@@ -787,6 +788,10 @@ async fn execute_codex_process(
         log::error!("Failed to emit codex-session-init: {}", e);
     }
     log::info!("Codex session initialized with ID: {}", session_id);
+
+    // 🔧 FIX: Use channels to track stdout/stderr closure for timeout detection
+    let (stdout_done_tx, stdout_done_rx) = tokio::sync::oneshot::channel();
+    let (stderr_done_tx, stderr_done_rx) = tokio::sync::oneshot::channel();
 
     // Spawn task to read stdout (JSONL events)
     // FIX: Emit to both session-specific and global channels for proper multi-tab isolation
@@ -805,6 +810,9 @@ async fn execute_codex_process(
                 }
             }
         }
+        log::info!("[Codex] Stdout closed for session: {}", session_id_stdout);
+        // Signal that stdout is done (ignore send error if receiver dropped)
+        let _ = stdout_done_tx.send(());
     });
 
     // Spawn task to read stderr (log errors, suppress debug output)
@@ -816,56 +824,75 @@ async fn execute_codex_process(
                 log::warn!("Codex stderr: {}", line);
             }
         }
+        log::info!("[Codex] Stderr closed for session: {}", session_id_stderr);
+        // Signal that stderr is done (ignore send error if receiver dropped)
+        let _ = stderr_done_tx.send(());
     });
 
     // Spawn task to wait for process completion
-    // FIX: Use polling with try_wait() instead of removing process before wait()
-    // This ensures the process stays in the HashMap while running, allowing cancel_codex to find and kill it
+    // 🔧 FIX: Only wait for stdout to close, then send completion event immediately
+    // stderr may continue outputting logs (MCP servers, etc.) for a long time
     tokio::spawn(async move {
         let state: tauri::State<'_, CodexProcessState> = app_handle_complete.state();
 
-        // Poll for process completion without removing it from the HashMap
-        // This allows cancel_codex to find and kill the process at any time
-        let exit_status: Option<std::process::ExitStatus> = loop {
+        // Only wait for stdout to close (stderr can continue logging)
+        let _ = stdout_done_rx.await;
+        log::info!("[Codex] Stdout closed for session: {}", session_id_complete);
+
+        // 🔧 CRITICAL FIX: Emit completion event immediately after stdout closes
+        // Don't wait for process exit or stderr - those can take a long time
+        // stdout closing means all JSONL events have been sent, session is effectively complete
+        log::info!("[Codex] Sending completion event for session: {}", session_id_complete);
+        if let Err(e) = app_handle_complete.emit(&format!("codex-complete:{}", session_id_complete), true) {
+            log::error!("Failed to emit codex-complete (session-specific): {}", e);
+        }
+        if let Err(e) = app_handle_complete.emit("codex-complete", true) {
+            log::error!("Failed to emit codex-complete (global): {}", e);
+        }
+
+        // Continue waiting for process exit in background (with timeout protection)
+        // This ensures proper cleanup but doesn't block the completion event
+        let timeout_duration = tokio::time::Duration::from_secs(30);
+        let start_time = tokio::time::Instant::now();
+
+        loop {
             let mut processes = state.processes.lock().await;
 
             if let Some(child) = processes.get_mut(&session_id_complete) {
                 match child.try_wait() {
                     Ok(Some(status)) => {
-                        // Process has completed, now remove it from HashMap
+                        log::info!("[Codex] Process exited with status: {}", status);
                         processes.remove(&session_id_complete);
-                        break Some(status);
+                        break;
                     }
                     Ok(None) => {
-                        // Process still running, release lock and wait before polling again
+                        // Check timeout
+                        if start_time.elapsed() > timeout_duration {
+                            log::warn!(
+                                "[Codex] Process {} did not exit within {}s after stdout closed, force killing",
+                                session_id_complete,
+                                timeout_duration.as_secs()
+                            );
+                            if let Err(e) = child.kill().await {
+                                log::error!("[Codex] Failed to kill process: {}", e);
+                            }
+                            processes.remove(&session_id_complete);
+                            break;
+                        }
+
                         drop(processes);
-                        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
                     }
                     Err(e) => {
-                        log::error!("Error checking process status: {}", e);
+                        log::error!("[Codex] Error checking process status: {}", e);
                         processes.remove(&session_id_complete);
-                        break None;
+                        break;
                     }
                 }
             } else {
-                // Process was removed by cancel_codex, stop polling
-                log::info!("Process {} was cancelled, stopping wait task", session_id_complete);
-                break None;
+                log::info!("[Codex] Process {} was removed (cancelled)", session_id_complete);
+                break;
             }
-        };
-
-        if let Some(status) = exit_status {
-            log::info!("Codex process exited with status: {}", status);
-        }
-
-        // Emit completion event
-        // FIX: Emit to both session-specific and global channels for proper multi-tab isolation
-        if let Err(e) = app_handle_complete.emit(&format!("codex-complete:{}", session_id_complete), true) {
-            log::error!("Failed to emit codex-complete (session-specific): {}", e);
-        }
-        // Also emit to global channel for backward compatibility
-        if let Err(e) = app_handle_complete.emit("codex-complete", true) {
-            log::error!("Failed to emit codex-complete (global): {}", e);
         }
     });
 

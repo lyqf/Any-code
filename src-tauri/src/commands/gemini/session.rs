@@ -358,6 +358,10 @@ async fn execute_gemini_process(
 
     log::info!("Gemini session initialized with ID: {}", session_id);
 
+    // 🔧 FIX: Use channels to track stdout/stderr closure for timeout detection
+    let (stdout_done_tx, stdout_done_rx) = tokio::sync::oneshot::channel();
+    let (stderr_done_tx, stderr_done_rx) = tokio::sync::oneshot::channel();
+
     // Clone handles for async tasks
     let app_handle_stdout = app_handle.clone();
     let app_handle_stderr = app_handle.clone();
@@ -443,7 +447,9 @@ async fn execute_gemini_process(
             }
         }
 
-        log::info!("Gemini stdout reader finished for session: {}", session_id_stdout);
+        log::info!("[Gemini] Stdout closed for session: {}", session_id_stdout);
+        // Signal that stdout is done (ignore send error if receiver dropped)
+        let _ = stdout_done_tx.send(());
     });
 
     // Spawn task to read stderr
@@ -476,64 +482,91 @@ async fn execute_gemini_process(
                 let _ = app_handle_stderr.emit("gemini-error", &error_line);
             }
         }
+
+        log::info!("[Gemini] Stderr closed for session: {}", session_id_stderr);
+        // Signal that stderr is done (ignore send error if receiver dropped)
+        let _ = stderr_done_tx.send(());
     });
 
     // Spawn task to wait for process completion
+    // 🔧 FIX: Add timeout mechanism - if stdout/stderr are closed but process doesn't exit within 30s, force completion
     let state_complete = app_handle.state::<GeminiProcessState>();
     let processes_complete = state_complete.processes.clone();
 
     tokio::spawn(async move {
-        // Wait a bit for stdout/stderr to be processed
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        // Wait for both stdout and stderr to close
+        let _ = tokio::join!(stdout_done_rx, stderr_done_rx);
+        log::info!("[Gemini] Both stdout and stderr closed for session: {}", session_id_complete);
 
-        // Get child from processes map
-        let mut processes = processes_complete.lock().await;
-        if let Some(mut child) = processes.remove(&session_id_complete) {
-            match child.wait().await {
-                Ok(status) => {
-                    let success = status.success();
-                    log::info!(
-                        "Gemini process exited with status: {} (success: {})",
-                        status,
-                        success
-                    );
+        // After streams close, give process up to 30 seconds to exit gracefully
+        let timeout_duration = tokio::time::Duration::from_secs(30);
 
-                    // Emit completion event
-                    let complete_payload = serde_json::json!({
-                        "type": "result",
-                        "status": if success { "success" } else { "error" },
-                        "geminiMetadata": {
-                            "provider": "gemini",
-                            "eventType": "complete",
-                            "exitCode": status.code()
-                        }
-                    });
-
-                    let complete_line = serde_json::to_string(&complete_payload).unwrap_or_default();
-
-                    let _ = app_handle_complete.emit(
-                        &format!("gemini-output:{}", session_id_complete),
-                        &complete_line,
-                    );
-                    let _ = app_handle_complete.emit("gemini-output", &complete_line);
-
-                    let _ = app_handle_complete.emit(
-                        &format!("gemini-complete:{}", session_id_complete),
-                        success,
-                    );
-                    let _ = app_handle_complete.emit("gemini-complete", success);
-                }
-                Err(e) => {
-                    log::error!("Failed to wait for Gemini process: {}", e);
-
-                    let _ = app_handle_complete.emit(
-                        &format!("gemini-complete:{}", session_id_complete),
-                        false,
-                    );
-                    let _ = app_handle_complete.emit("gemini-complete", false);
-                }
+        // Try to wait for process with timeout
+        let wait_result = tokio::time::timeout(timeout_duration, async {
+            let mut processes = processes_complete.lock().await;
+            if let Some(mut child) = processes.remove(&session_id_complete) {
+                child.wait().await
+            } else {
+                Err(std::io::Error::new(std::io::ErrorKind::NotFound, "Process not found"))
             }
-        }
+        }).await;
+
+        let (success, exit_code) = match wait_result {
+            Ok(Ok(status)) => {
+                let success = status.success();
+                log::info!(
+                    "[Gemini] Process exited with status: {} (success: {})",
+                    status,
+                    success
+                );
+                (success, status.code())
+            }
+            Ok(Err(e)) => {
+                log::error!("[Gemini] Failed to wait for process: {}", e);
+                (false, None)
+            }
+            Err(_) => {
+                // Timeout occurred
+                log::warn!(
+                    "[Gemini] Process {} did not exit within {}s after streams closed, assuming hung - forcing completion",
+                    session_id_complete,
+                    timeout_duration.as_secs()
+                );
+                // Try to kill the hung process
+                let mut processes = processes_complete.lock().await;
+                if let Some(mut child) = processes.remove(&session_id_complete) {
+                    if let Err(e) = child.kill().await {
+                        log::error!("[Gemini] Failed to kill hung process: {}", e);
+                    }
+                }
+                (false, None)
+            }
+        };
+
+        // Emit completion event
+        let complete_payload = serde_json::json!({
+            "type": "result",
+            "status": if success { "success" } else { "error" },
+            "geminiMetadata": {
+                "provider": "gemini",
+                "eventType": "complete",
+                "exitCode": exit_code
+            }
+        });
+
+        let complete_line = serde_json::to_string(&complete_payload).unwrap_or_default();
+
+        let _ = app_handle_complete.emit(
+            &format!("gemini-output:{}", session_id_complete),
+            &complete_line,
+        );
+        let _ = app_handle_complete.emit("gemini-output", &complete_line);
+
+        let _ = app_handle_complete.emit(
+            &format!("gemini-complete:{}", session_id_complete),
+            success,
+        );
+        let _ = app_handle_complete.emit("gemini-complete", success);
     });
 
     Ok(())
