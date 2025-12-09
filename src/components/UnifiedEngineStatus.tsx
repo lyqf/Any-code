@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
-import { Loader2, AlertCircle, Code2, Sparkles, CheckCircle2, XCircle } from "lucide-react";
+import { Loader2, AlertCircle, Sparkles, CheckCircle2, XCircle } from "lucide-react";
 import { ClaudeIcon } from "@/components/icons/ClaudeIcon";
+import { CodexIcon } from "@/components/icons/CodexIcon";
 import { cn } from "@/lib/utils";
 import { api } from "@/lib/api";
 import {
@@ -78,7 +79,7 @@ export const UnifiedEngineStatus: React.FC<UnifiedEngineStatusProps> = ({
           statusText: codexInstalled ? '已配置' : '未配置',
           version: codexVersion,
           label: 'OpenAI Codex', 
-          icon: Code2, 
+          icon: CodexIcon, 
           color: 'text-blue-500' 
         },
         { 
