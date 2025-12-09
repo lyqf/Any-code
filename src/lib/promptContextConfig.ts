@@ -64,8 +64,8 @@ export const DEFAULT_CONTEXT_CONFIG: PromptContextConfig = {
  */
 export const CONTEXT_PRESETS = {
   minimal: {
-    name: '精简模式',
-    description: '最少上下文，适合简单任务（2轮对话）',
+    nameKey: 'promptContext.presets.minimal',
+    descriptionKey: 'promptContext.presets.minimalDesc',
     config: {
       maxMessages: 4,  // 2 轮对话
       maxAssistantMessageLength: 500,
@@ -75,13 +75,13 @@ export const CONTEXT_PRESETS = {
     } as PromptContextConfig,
   },
   balanced: {
-    name: '平衡模式',
-    description: '默认配置，适合大多数场景（4轮对话）',
+    nameKey: 'promptContext.presets.balanced',
+    descriptionKey: 'promptContext.presets.balancedDesc',
     config: DEFAULT_CONTEXT_CONFIG,
   },
   detailed: {
-    name: '详细模式',
-    description: '完整上下文，适合复杂任务（8轮对话）',
+    nameKey: 'promptContext.presets.detailed',
+    descriptionKey: 'promptContext.presets.detailedDesc',
     config: {
       maxMessages: 16,  // 8 轮对话
       maxAssistantMessageLength: 5000,

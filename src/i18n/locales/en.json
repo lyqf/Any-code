@@ -461,6 +461,14 @@
     "reset": "Reset",
     "saveConfig": "Save Configuration",
     "quickPresets": "Quick Presets:",
+    "presets": {
+      "minimal": "Minimal Mode",
+      "minimalDesc": "Minimal context for simple tasks (2 rounds)",
+      "balanced": "Balanced Mode",
+      "balancedDesc": "Default configuration for most scenarios (4 rounds)",
+      "detailed": "Detailed Mode",
+      "detailedDesc": "Full context for complex tasks (8 rounds)"
+    },
     "maxMessages": "Max Messages",
     "maxMessagesDesc": "Number of recent messages to extract. More context is better but consumes more tokens",
     "messages": "messages",
@@ -932,7 +940,23 @@
     "enableAutoApiKeyHelper": "Auto-generate API Key Helper",
     "autoKeyHelperEnabled": "Enabled: System will auto-generate apiKeyHelper command based on Auth Token (format: echo 'your-token')",
     "autoKeyHelperDisabled": "Disabled: apiKeyHelper will not be auto-generated. If current config doesn't work, try enabling this option.",
-    "authRequired": "Please fill in at least Auth Token or API Key"
+    "authRequired": "Please fill in at least Auth Token or API Key",
+    "categoryOfficial": "Official",
+    "categoryCnOfficial": "CN Official",
+    "categoryAggregator": "Aggregator",
+    "categoryThirdParty": "Third Party",
+    "categoryCustom": "Custom",
+    "codexPresets": {
+      "openaiOfficial": "OpenAI official Codex service, no additional configuration required",
+      "azureOpenai": "Microsoft Azure hosted OpenAI service",
+      "customName": "Custom Provider",
+      "customDesc": "Custom third-party API provider"
+    },
+    "geminiPresets": {
+      "googleOfficial": "Google official Gemini API (OAuth login)",
+      "customName": "Custom Provider",
+      "customDesc": "Custom Gemini API endpoint"
+    }
   },
   "thinking": {
     "doubleClickSkip": "Double-click to skip typing effect"

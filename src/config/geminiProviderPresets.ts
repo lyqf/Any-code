@@ -101,20 +101,20 @@ export const geminiProviderPresets: GeminiProviderPreset[] = [
     websiteUrl: "https://ai.google.dev/",
     apiKeyUrl: "https://aistudio.google.com/apikey",
     env: {},  // 官方使用 OAuth，无需环境变量
-    description: "Google 官方 Gemini API (OAuth 登录)",
+    description: "provider.geminiPresets.googleOfficial",
     category: "official",
     partnerPromotionKey: "google-official",
   },
   {
     id: "custom",
-    name: "自定义供应商",
+    name: "provider.geminiPresets.customName",
     websiteUrl: "",
     env: {
       GOOGLE_GEMINI_BASE_URL: "",
       GEMINI_MODEL: "gemini-3-pro-preview",
     },
     model: "gemini-3-pro-preview",
-    description: "自定义 Gemini API 端点",
+    description: "provider.geminiPresets.customDesc",
     category: "custom",
     isCustomTemplate: true,
   },
@@ -135,15 +135,15 @@ export function getPresetsByCategory(category: ProviderCategory): GeminiProvider
 }
 
 /**
- * 获取分类显示名称
+ * 获取分类翻译键
  */
-export function getCategoryDisplayName(category: ProviderCategory): string {
-  const names: Record<ProviderCategory, string> = {
-    official: "官方",
-    third_party: "第三方",
-    custom: "自定义",
+export function getCategoryKey(category: ProviderCategory): string {
+  const keys: Record<ProviderCategory, string> = {
+    official: "provider.categoryOfficial",
+    third_party: "provider.categoryThirdParty",
+    custom: "provider.categoryCustom",
   };
-  return names[category] || category;
+  return keys[category] || category;
 }
 
 /**

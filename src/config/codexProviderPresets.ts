@@ -139,7 +139,7 @@ export const codexProviderPresets: CodexProviderPreset[] = [
     category: "official",
     auth: {},
     config: ``,
-    description: "OpenAI 官方 Codex 服务，无需额外配置",
+    description: "provider.codexPresets.openaiOfficial",
   },
   {
     id: "azure-openai",
@@ -161,17 +161,17 @@ query_params = { "api-version" = "2025-04-01-preview" }
 wire_api = "responses"
 requires_openai_auth = true`,
     endpointCandidates: ["https://YOUR_RESOURCE_NAME.openai.azure.com/openai"],
-    description: "Microsoft Azure 托管的 OpenAI 服务",
+    description: "provider.codexPresets.azureOpenai",
   },
   {
     id: "custom",
-    name: "自定义供应商",
+    name: "provider.codexPresets.customName",
     websiteUrl: "",
     category: "custom",
     isCustomTemplate: true,
     auth: generateThirdPartyAuth(""),
     config: generateThirdPartyConfig("custom", "https://your-api-endpoint.com/v1", "gpt-5-codex"),
-    description: "自定义第三方 API 供应商",
+    description: "provider.codexPresets.customDesc",
   },
 ];
 
@@ -190,15 +190,15 @@ export function getPresetsByCategory(category: ProviderCategory): CodexProviderP
 }
 
 /**
- * 获取分类显示名称
+ * 获取分类翻译键
  */
-export function getCategoryDisplayName(category: ProviderCategory): string {
-  const names: Record<ProviderCategory, string> = {
-    official: "官方",
-    cn_official: "国产官方",
-    aggregator: "聚合服务",
-    third_party: "第三方",
-    custom: "自定义",
+export function getCategoryKey(category: ProviderCategory): string {
+  const keys: Record<ProviderCategory, string> = {
+    official: "provider.categoryOfficial",
+    cn_official: "provider.categoryCnOfficial",
+    aggregator: "provider.categoryAggregator",
+    third_party: "provider.categoryThirdParty",
+    custom: "provider.categoryCustom",
   };
-  return names[category] || category;
+  return keys[category] || category;
 }

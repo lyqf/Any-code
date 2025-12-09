@@ -461,6 +461,14 @@
     "reset": "重置",
     "saveConfig": "保存配置",
     "quickPresets": "快速预设：",
+    "presets": {
+      "minimal": "精简模式",
+      "minimalDesc": "最少上下文，适合简单任务（2轮对话）",
+      "balanced": "平衡模式",
+      "balancedDesc": "默认配置，适合大多数场景（4轮对话）",
+      "detailed": "详细模式",
+      "detailedDesc": "完整上下文，适合复杂任务（8轮对话）"
+    },
     "maxMessages": "最大消息数量",
     "maxMessagesDesc": "提取的最近消息数量，越多上下文越完整但会消耗更多 token",
     "messages": "条",
@@ -932,7 +940,23 @@
     "enableAutoApiKeyHelper": "自动生成 API Key Helper",
     "autoKeyHelperEnabled": "已启用：系统将根据认证Token自动生成 apiKeyHelper 命令（格式：echo 'your-token'）",
     "autoKeyHelperDisabled": "已禁用：不会自动生成 apiKeyHelper。如果当前配置无法使用，请勾选此选项后再次尝试。",
-    "authRequired": "请至少填写认证Token或API Key中的一个"
+    "authRequired": "请至少填写认证Token或API Key中的一个",
+    "categoryOfficial": "官方",
+    "categoryCnOfficial": "国产官方",
+    "categoryAggregator": "聚合服务",
+    "categoryThirdParty": "第三方",
+    "categoryCustom": "自定义",
+    "codexPresets": {
+      "openaiOfficial": "OpenAI 官方 Codex 服务，无需额外配置",
+      "azureOpenai": "Microsoft Azure 托管的 OpenAI 服务",
+      "customName": "自定义供应商",
+      "customDesc": "自定义第三方 API 供应商"
+    },
+    "geminiPresets": {
+      "googleOfficial": "Google 官方 Gemini API (OAuth 登录)",
+      "customName": "自定义供应商",
+      "customDesc": "自定义 Gemini API 端点"
+    }
   },
   "thinking": {
     "doubleClickSkip": "双击跳过打字效果"

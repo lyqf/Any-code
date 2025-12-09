@@ -27,7 +27,7 @@ import {
   extractApiKeyFromAuth,
   extractBaseUrlFromConfig,
   extractModelFromConfig,
-  getCategoryDisplayName,
+  getCategoryKey,
 } from '@/config/codexProviderPresets';
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -355,14 +355,14 @@ export default function CodexProviderManager({ onBack }: CodexProviderManagerPro
                       )}
                       {config.category && (
                         <Badge variant="outline" className="text-xs">
-                          {getCategoryDisplayName(config.category)}
+                          {t(getCategoryKey(config.category))}
                         </Badge>
                       )}
                     </div>
 
                     <div className="space-y-1 text-sm text-muted-foreground">
                       {config.description && (
-                        <p><span className="font-medium">{t('provider.description')}</span>{config.description}</p>
+                        <p><span className="font-medium">{t('provider.description')}</span>{config.description.startsWith('provider.') ? t(config.description) : config.description}</p>
                       )}
                       {config.websiteUrl && (
                         <p className="flex items-center gap-1">

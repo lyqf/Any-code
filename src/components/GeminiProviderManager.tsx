@@ -27,7 +27,7 @@ import {
   extractApiKeyFromEnv,
   extractBaseUrlFromEnv,
   extractModelFromEnv,
-  getCategoryDisplayName,
+  getCategoryKey,
 } from '@/config/geminiProviderPresets';
 import { useTranslation } from "@/hooks/useTranslation";
 
@@ -356,14 +356,14 @@ export default function GeminiProviderManager({ onBack }: GeminiProviderManagerP
                       )}
                       {config.category && (
                         <Badge variant="outline" className="text-xs">
-                          {getCategoryDisplayName(config.category)}
+                          {t(getCategoryKey(config.category))}
                         </Badge>
                       )}
                     </div>
 
                     <div className="space-y-1 text-sm text-muted-foreground">
                       {config.description && (
-                        <p><span className="font-medium">{t('provider.description')}</span>{config.description}</p>
+                        <p><span className="font-medium">{t('provider.description')}</span>{config.description.startsWith('provider.') ? t(config.description) : config.description}</p>
                       )}
                       {config.websiteUrl && (
                         <p className="flex items-center gap-1">

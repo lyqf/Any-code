@@ -103,11 +103,11 @@ export const PromptContextConfigSettings: React.FC<PromptContextConfigSettingsPr
                     size="sm"
                     onClick={() => handleApplyPreset(key as keyof typeof CONTEXT_PRESETS)}
                   >
-                    {preset.name}
+                    {t(preset.nameKey)}
                   </Button>
                 </TooltipTrigger>
                 <TooltipContent>
-                  <p>{preset.description}</p>
+                  <p>{t(preset.descriptionKey)}</p>
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
