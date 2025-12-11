@@ -1,3 +1,36 @@
+//! MCP (Model Context Protocol) 命令模块
+//!
+//! ## 废弃警告
+//!
+//! 以下命令依赖 Claude Code CLI 文本解析，已被新的直接文件操作方式替代：
+//!
+//! ❌ 废弃命令（保留以兼容旧前端，后续可删除）：
+//! - mcp_add - 使用 mcp_upsert_server 代替
+//! - mcp_list - 使用 mcp_get_all_servers 代替
+//! - mcp_get - 使用 mcp_get_all_servers 代替
+//! - mcp_remove - 使用 mcp_delete_server 代替
+//! - mcp_add_json - 使用 mcp_upsert_server 代替
+//! - mcp_add_from_claude_desktop - 使用 mcp_import_from_app("claude") 代替
+//! - mcp_export_config - 使用 mcp_read_claude_config 代替
+//!
+//! ✅ 保留的命令：
+//! - mcp_serve - 启动 MCP 服务器
+//! - mcp_test_connection - 测试连接
+//! - mcp_get_server_status - 获取状态
+//! - mcp_reset_project_choices - 重置项目选择
+//! - mcp_read_project_config - 读取项目配置
+//! - mcp_save_project_config - 保存项目配置
+//!
+//! ✨ 新增多应用支持命令（第 765-890 行）：
+//! - mcp_get_claude_status
+//! - mcp_get_all_servers
+//! - mcp_upsert_server
+//! - mcp_delete_server
+//! - mcp_toggle_app
+//! - mcp_import_from_app
+//! - mcp_validate_command
+//! - mcp_read_claude_config
+
 use anyhow::{Context, Result};
 use dirs;
 use log::{error, info};
