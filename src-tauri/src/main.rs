@@ -41,6 +41,8 @@ use commands::mcp::{
     mcp_get_claude_status, mcp_upsert_server, mcp_delete_server, mcp_toggle_app,
     mcp_import_from_app, mcp_validate_command, mcp_read_claude_config, mcp_get_all_servers,
     mcp_get_unified_servers,
+    // 多引擎独立隔离控制 API（新设计）
+    mcp_get_engine_servers, mcp_upsert_engine_server, mcp_delete_engine_server,
 };
 use commands::storage::{init_database, AgentDb};
 
@@ -354,6 +356,10 @@ fn main() {
             mcp_read_claude_config,
             mcp_get_all_servers,
             mcp_get_unified_servers,
+            // 多引擎独立隔离控制 API
+            mcp_get_engine_servers,
+            mcp_upsert_engine_server,
+            mcp_delete_engine_server,
             // Storage Management
             storage_list_tables,
             storage_read_table,

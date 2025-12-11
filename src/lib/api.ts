@@ -1398,12 +1398,81 @@ export const api = {
    * 获取所有应用的 MCP 服务器统一视图（推荐）
    *
    * 返回合并后的服务器列表，每个服务器的 apps 字段显示真实的启用状态
+   * @deprecated 使用 mcpGetEngineServers 代替，按引擎独立管理
    */
   async mcpGetUnifiedServers(): Promise<Record<string, McpServer>> {
     try {
       return await invoke<Record<string, McpServer>>("mcp_get_unified_servers");
     } catch (error) {
       console.error("Failed to get unified MCP servers:", error);
+      throw error;
+    }
+  },
+
+  // ============================================================================
+  // 多引擎独立隔离控制 API（新设计）
+  // ============================================================================
+
+  /**
+   * 获取指定引擎的 MCP 服务器列表
+   *
+   * @param engine 引擎名称（"claude" | "codex" | "gemini"）
+   * @returns 该引擎的 MCP 服务器映射
+   */
+  async mcpGetEngineServers(
+    engine: "claude" | "codex" | "gemini"
+  ): Promise<Record<string, MCPServerSpec>> {
+    try {
+      return await invoke<Record<string, MCPServerSpec>>("mcp_get_engine_servers", {
+        engine,
+      });
+    } catch (error) {
+      console.error(`Failed to get ${engine} MCP servers:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * 在指定引擎中添加或更新 MCP 服务器
+   *
+   * @param engine 引擎名称（"claude" | "codex" | "gemini"）
+   * @param id 服务器 ID
+   * @param serverSpec 服务器规范
+   */
+  async mcpUpsertEngineServer(
+    engine: "claude" | "codex" | "gemini",
+    id: string,
+    serverSpec: MCPServerSpec
+  ): Promise<string> {
+    try {
+      return await invoke<string>("mcp_upsert_engine_server", {
+        engine,
+        id,
+        serverSpec,
+      });
+    } catch (error) {
+      console.error(`Failed to upsert ${engine} MCP server:`, error);
+      throw error;
+    }
+  },
+
+  /**
+   * 从指定引擎中删除 MCP 服务器
+   *
+   * @param engine 引擎名称（"claude" | "codex" | "gemini"）
+   * @param id 服务器 ID
+   */
+  async mcpDeleteEngineServer(
+    engine: "claude" | "codex" | "gemini",
+    id: string
+  ): Promise<string> {
+    try {
+      return await invoke<string>("mcp_delete_engine_server", {
+        engine,
+        id,
+      });
+    } catch (error) {
+      console.error(`Failed to delete ${engine} MCP server:`, error);
       throw error;
     }
   },

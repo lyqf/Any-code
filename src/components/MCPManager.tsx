@@ -1,15 +1,10 @@
-import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { ArrowLeft, Network, Plus, Download, AlertCircle, Loader2 } from "lucide-react";
+import React, { useState } from "react";
+import { motion } from "framer-motion";
+import { ArrowLeft, Network } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Card } from "@/components/ui/card";
-import { Toast, ToastContainer } from "@/components/ui/toast";
-import { api, type McpServer } from "@/lib/api";
-import { MCPServerList } from "./MCPServerList";
-import { MCPAddServer } from "./MCPAddServer";
-import { MCPImportExport } from "./MCPImportExport";
 import { useTranslation } from "@/hooks/useTranslation";
+import { MCPEnginePanel } from "./MCPEnginePanel";
 
 interface MCPManagerProps {
   /**
@@ -23,102 +18,21 @@ interface MCPManagerProps {
 }
 
 /**
- * Main component for managing MCP (Model Context Protocol) servers
- * Provides a comprehensive UI for adding, configuring, and managing MCP servers
+ * 多引擎独立隔离的 MCP 管理器
+ *
+ * 为 Claude、Codex、Gemini 三个引擎提供完全独立的 MCP 工具管理界面
+ * 每个引擎有自己的工具列表，互不干扰
  */
 export const MCPManager: React.FC<MCPManagerProps> = ({
   onBack,
   className,
 }) => {
   const { t } = useTranslation();
-  const [activeTab, setActiveTab] = useState("servers");
-  const [servers, setServers] = useState<McpServer[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
-  const [cacheTimestamp, setCacheTimestamp] = useState<number | null>(null);
-
-  // Load servers on mount
-  useEffect(() => {
-    loadServers();
-  }, []);
-
-  /**
-   * Loads all MCP servers with caching
-   */
-  const loadServers = async (forceRefresh = false) => {
-    const now = Date.now();
-    const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes cache
-
-    // Check cache validity
-    if (!forceRefresh && cacheTimestamp && servers.length > 0 && (now - cacheTimestamp) < CACHE_DURATION) {
-      return; // Use cached data, no loading state needed
-    }
-
-    try {
-      // Only show loading state if we don't have cached data
-      if (servers.length === 0) {
-        setLoading(true);
-      }
-      setError(null);
-
-      // 使用统一视图 API 获取所有应用的服务器（包含真实的 apps 状态）
-      const serversMap = await api.mcpGetUnifiedServers();
-
-      // 转换为数组格式
-      const serversList: McpServer[] = Object.values(serversMap);
-
-      setServers(serversList);
-      setCacheTimestamp(now);
-    } catch (err) {
-      console.error("MCPManager: Failed to load MCP servers:", err);
-      setError(t('mcp.loadError'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /**
-   * Handles server added event
-   */
-  const handleServerAdded = () => {
-    loadServers(true); // Force refresh when server is added
-    setToast({ message: t('mcp.addSuccess'), type: "success" });
-    setActiveTab("servers");
-  };
-
-  /**
-   * Handles server removed event
-   */
-  const handleServerRemoved = (id: string) => {
-    setServers(prev => prev.filter(s => s.id !== id));
-    setToast({ message: t('mcp.deleteSuccess', { name: id }), type: "success" });
-  };
-
-  /**
-   * Handles import completed event
-   */
-  const handleImportCompleted = (imported: number, failed: number) => {
-    // Only refresh if servers were actually imported
-    if (imported > 0) {
-      loadServers(true); // Force refresh when servers are imported
-    }
-    if (failed === 0) {
-      setToast({
-        message: t('mcp.importSuccess', { count: imported }),
-        type: "success"
-      });
-    } else {
-      setToast({
-        message: t('mcp.importPartial', { success: imported, failed }),
-        type: "error"
-      });
-    }
-  };
+  const [activeTab, setActiveTab] = useState<"claude" | "codex" | "gemini">("claude");
 
   return (
     <div className={`flex flex-col h-full bg-background text-foreground ${className || ""}`}>
-      <div className="max-w-5xl mx-auto w-full flex flex-col h-full">
+      <div className="max-w-6xl mx-auto w-full flex flex-col h-full">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -139,104 +53,63 @@ export const MCPManager: React.FC<MCPManagerProps> = ({
             <div>
               <h2 className="text-lg font-semibold flex items-center gap-2">
                 <Network className="h-5 w-5 text-blue-500" />
-                {t('mcp.servers')}
+                {t('mcp.servers')} - 多引擎独立管理
               </h2>
               <p className="text-xs text-muted-foreground">
-                {(() => {
-                  const claudeCount = servers.filter(s => s.apps.claude).length;
-                  const codexCount = servers.filter(s => s.apps.codex).length;
-                  const geminiCount = servers.filter(s => s.apps.gemini).length;
-                  return `${servers.length} 个服务器 · Claude: ${claudeCount} · Codex: ${codexCount} · Gemini: ${geminiCount}`;
-                })()}
+                为每个引擎独立配置 MCP 工具
               </p>
             </div>
           </div>
         </motion.div>
 
-        {/* Error Display */}
-        <AnimatePresence>
-          {error && (
-            <motion.div
-              initial={{ opacity: 0, y: -10 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -10 }}
-              className="mx-4 mt-4 p-3 rounded-lg bg-destructive/10 border border-destructive/50 flex items-center gap-2 text-sm text-destructive"
-            >
-              <AlertCircle className="h-4 w-4" />
-              {error}
-            </motion.div>
-          )}
-        </AnimatePresence>
-
         {/* Main Content */}
-        {loading ? (
-          <div className="flex-1 flex items-center justify-center">
-            <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-          </div>
-        ) : (
-          <div className="flex-1 overflow-y-auto p-4">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-              <TabsList className="grid w-full max-w-md grid-cols-3">
-                <TabsTrigger value="servers" className="gap-2">
-                  <Network className="h-4 w-4 text-blue-500" />
-                  {t('mcp.servers')}
-                </TabsTrigger>
-                <TabsTrigger value="add" className="gap-2">
-                  <Plus className="h-4 w-4 text-green-500" />
-                  {t('mcp.addServer')}
-                </TabsTrigger>
-                <TabsTrigger value="import" className="gap-2">
-                  <Download className="h-4 w-4 text-purple-500" />
-                  {t('mcp.importExport')}
-                </TabsTrigger>
-              </TabsList>
+        <div className="flex-1 overflow-y-auto p-6">
+          <Tabs
+            value={activeTab}
+            onValueChange={(v) => setActiveTab(v as "claude" | "codex" | "gemini")}
+            className="space-y-6"
+          >
+            <TabsList className="grid w-full max-w-md grid-cols-3">
+              <TabsTrigger value="claude" className="gap-2">
+                Claude
+              </TabsTrigger>
+              <TabsTrigger value="codex" className="gap-2">
+                Codex
+              </TabsTrigger>
+              <TabsTrigger value="gemini" className="gap-2">
+                Gemini
+              </TabsTrigger>
+            </TabsList>
 
-              {/* Servers Tab */}
-              <TabsContent value="servers" className="mt-6">
-                <Card>
-                  <MCPServerList
-                    servers={servers}
-                    loading={false}
-                    onServerRemoved={handleServerRemoved}
-                    onRefresh={() => loadServers(true)}
-                  />
-                </Card>
-              </TabsContent>
+            {/* Claude Engine Panel */}
+            <TabsContent value="claude" className="mt-6">
+              <MCPEnginePanel
+                engine="claude"
+                engineLabel="Claude"
+                engineColor="#8B5CF6"
+              />
+            </TabsContent>
 
-              {/* Add Server Tab */}
-              <TabsContent value="add" className="mt-6">
-                <Card>
-                  <MCPAddServer
-                    onServerAdded={handleServerAdded}
-                    onError={(message: string) => setToast({ message, type: "error" })}
-                  />
-                </Card>
-              </TabsContent>
+            {/* Codex Engine Panel */}
+            <TabsContent value="codex" className="mt-6">
+              <MCPEnginePanel
+                engine="codex"
+                engineLabel="Codex"
+                engineColor="#10B981"
+              />
+            </TabsContent>
 
-              {/* Import/Export Tab */}
-              <TabsContent value="import" className="mt-6">
-                <Card className="overflow-hidden">
-                  <MCPImportExport
-                    onImportCompleted={handleImportCompleted}
-                    onError={(message: string) => setToast({ message, type: "error" })}
-                  />
-                </Card>
-              </TabsContent>
-            </Tabs>
-          </div>
-        )}
+            {/* Gemini Engine Panel */}
+            <TabsContent value="gemini" className="mt-6">
+              <MCPEnginePanel
+                engine="gemini"
+                engineLabel="Gemini"
+                engineColor="#3B82F6"
+              />
+            </TabsContent>
+          </Tabs>
+        </div>
       </div>
-
-      {/* Toast Notifications */}
-      <ToastContainer>
-        {toast && (
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onDismiss={() => setToast(null)}
-          />
-        )}
-      </ToastContainer>
     </div>
   );
 }; 

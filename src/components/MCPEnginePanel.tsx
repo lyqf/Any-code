@@ -1,0 +1,348 @@
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import {
+  Network,
+  Globe,
+  Terminal,
+  Trash2,
+  Loader2,
+  RefreshCw,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Plus,
+} from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { api, type MCPServerSpec } from "@/lib/api";
+import { copyTextToClipboard } from "@/lib/clipboard";
+
+interface MCPEnginePanelProps {
+  /**
+   * 引擎名称
+   */
+  engine: "claude" | "codex" | "gemini";
+  /**
+   * 引擎显示名称
+   */
+  engineLabel: string;
+  /**
+   * 引擎图标颜色
+   */
+  engineColor: string;
+  /**
+   * 可选的 className
+   */
+  className?: string;
+}
+
+interface MCPServerItem {
+  id: string;
+  spec: MCPServerSpec;
+}
+
+/**
+ * 单个引擎的 MCP 管理面板
+ * 显示该引擎独立的 MCP 工具列表，支持添加、删除操作
+ */
+export const MCPEnginePanel: React.FC<MCPEnginePanelProps> = ({
+  engine,
+  engineLabel,
+  engineColor,
+  className,
+}) => {
+  const [servers, setServers] = useState<MCPServerItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [removingServer, setRemovingServer] = useState<string | null>(null);
+  const [expandedServers, setExpandedServers] = useState<Set<string>>(new Set());
+  const [copiedServer, setCopiedServer] = useState<string | null>(null);
+
+  // 加载该引擎的服务器列表
+  useEffect(() => {
+    loadServers();
+  }, [engine]);
+
+  const loadServers = async () => {
+    try {
+      setLoading(true);
+      const serversMap = await api.mcpGetEngineServers(engine);
+
+      // 转换为数组格式
+      const serversList: MCPServerItem[] = Object.entries(serversMap).map(
+        ([id, spec]) => ({ id, spec })
+      );
+
+      setServers(serversList);
+    } catch (error) {
+      console.error(`Failed to load ${engine} MCP servers:`, error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  /**
+   * 切换展开状态
+   */
+  const toggleExpanded = (serverId: string) => {
+    setExpandedServers((prev) => {
+      const next = new Set(prev);
+      if (next.has(serverId)) {
+        next.delete(serverId);
+      } else {
+        next.add(serverId);
+      }
+      return next;
+    });
+  };
+
+  /**
+   * 复制命令到剪贴板
+   */
+  const copyCommand = async (command: string, serverId: string) => {
+    try {
+      await copyTextToClipboard(command);
+      setCopiedServer(serverId);
+      setTimeout(() => setCopiedServer(null), 2000);
+    } catch (error) {
+      console.error("Failed to copy command:", error);
+    }
+  };
+
+  /**
+   * 删除服务器
+   */
+  const handleRemoveServer = async (id: string) => {
+    try {
+      setRemovingServer(id);
+      await api.mcpDeleteEngineServer(engine, id);
+      setServers((prev) => prev.filter((s) => s.id !== id));
+    } catch (error) {
+      console.error(`Failed to remove server from ${engine}:`, error);
+    } finally {
+      setRemovingServer(null);
+    }
+  };
+
+  /**
+   * 获取传输类型图标
+   */
+  const getTransportIcon = (transport: string) => {
+    switch (transport) {
+      case "stdio":
+        return <Terminal className="h-4 w-4 text-amber-500" />;
+      case "sse":
+        return <Globe className="h-4 w-4 text-emerald-500" />;
+      case "http":
+        return <Network className="h-4 w-4 text-blue-500" />;
+      default:
+        return <Network className="h-4 w-4 text-blue-500" />;
+    }
+  };
+
+  /**
+   * 渲染单个服务器项
+   */
+  const renderServerItem = (server: MCPServerItem) => {
+    const isExpanded = expandedServers.has(server.id);
+    const isCopied = copiedServer === server.id;
+
+    const transport = server.spec.type || "stdio";
+    const command = server.spec.command;
+    const url = server.spec.url;
+
+    return (
+      <motion.div
+        key={server.id}
+        initial={{ opacity: 0, x: -20 }}
+        animate={{ opacity: 1, x: 0 }}
+        exit={{ opacity: 0, x: -20 }}
+        className="group p-4 rounded-lg border border-border bg-card hover:bg-accent/5 hover:border-primary/20 transition-all"
+      >
+        {/* 主行：服务器信息 + 操作按钮 */}
+        <div className="flex items-start justify-between gap-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <div className="p-1.5 bg-primary/10 rounded">
+                {getTransportIcon(transport)}
+              </div>
+              <h4 className="font-medium truncate">{server.id}</h4>
+              <Badge variant="outline" className="text-xs">
+                {transport}
+              </Badge>
+            </div>
+            {command && !isExpanded && (
+              <p className="text-xs text-muted-foreground font-mono truncate pl-9">
+                {command}
+              </p>
+            )}
+            {transport === "sse" && url && !isExpanded && (
+              <p className="text-xs text-muted-foreground font-mono truncate pl-9">
+                {url}
+              </p>
+            )}
+          </div>
+
+          {/* 操作按钮 */}
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => toggleExpanded(server.id)}
+              className="h-8 px-2 hover:bg-primary/10"
+            >
+              {isExpanded ? (
+                <ChevronUp className="h-4 w-4" />
+              ) : (
+                <ChevronDown className="h-4 w-4" />
+              )}
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => handleRemoveServer(server.id)}
+              disabled={removingServer === server.id}
+              className="hover:bg-destructive/10 hover:text-destructive"
+              title="删除"
+            >
+              {removingServer === server.id ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Trash2 className="h-4 w-4" />
+              )}
+            </Button>
+          </div>
+        </div>
+
+        {/* 展开的详细信息 */}
+        {isExpanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: "auto", opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            className="pl-9 space-y-3 pt-3 mt-3 border-t border-border/50"
+          >
+            {command && (
+              <div className="space-y-1">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-muted-foreground">Command</p>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => copyCommand(command, server.id)}
+                    className="h-6 px-2 text-xs hover:bg-primary/10"
+                  >
+                    <Copy className="h-3 w-3 mr-1" />
+                    {isCopied ? "Copied!" : "Copy"}
+                  </Button>
+                </div>
+                <p className="text-xs font-mono bg-muted/50 p-2 rounded break-all">
+                  {command}
+                </p>
+              </div>
+            )}
+
+            {server.spec.args && server.spec.args.length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Arguments</p>
+                <div className="text-xs font-mono bg-muted/50 p-2 rounded space-y-1">
+                  {server.spec.args.map((arg, idx) => (
+                    <div key={idx} className="break-all">
+                      <span className="text-muted-foreground mr-2">[{idx}]</span>
+                      {arg}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {url && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">URL</p>
+                <p className="text-xs font-mono bg-muted/50 p-2 rounded break-all">
+                  {url}
+                </p>
+              </div>
+            )}
+
+            {server.spec.env && Object.keys(server.spec.env).length > 0 && (
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">
+                  Environment Variables
+                </p>
+                <div className="text-xs font-mono bg-muted/50 p-2 rounded space-y-1">
+                  {Object.entries(server.spec.env).map(([key, value]) => (
+                    <div key={key} className="break-all">
+                      <span className="text-primary">{key}</span>
+                      <span className="text-muted-foreground mx-1">=</span>
+                      <span>{value}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+      </motion.div>
+    );
+  };
+
+  return (
+    <Card className={`p-6 ${className || ""}`}>
+      {/* 头部 */}
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div
+            className="p-2 rounded-lg"
+            style={{ backgroundColor: `${engineColor}20` }}
+          >
+            <Network className="h-5 w-5" style={{ color: engineColor }} />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold">{engineLabel}</h3>
+            <p className="text-xs text-muted-foreground">
+              {servers.length} 个工具已启用
+            </p>
+          </div>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={loadServers}
+          className="gap-2 hover:bg-primary/10"
+        >
+          <RefreshCw className="h-4 w-4" />
+          刷新
+        </Button>
+      </div>
+
+      {/* 服务器列表 */}
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        </div>
+      ) : servers.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center">
+          <div
+            className="p-4 rounded-full mb-4"
+            style={{ backgroundColor: `${engineColor}20` }}
+          >
+            <Network className="h-12 w-12" style={{ color: engineColor }} />
+          </div>
+          <p className="text-muted-foreground mb-2 font-medium">
+            暂无 MCP 工具
+          </p>
+          <p className="text-sm text-muted-foreground">
+            为 {engineLabel} 添加 MCP 工具以扩展功能
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          <AnimatePresence>
+            {servers.map((server) => renderServerItem(server))}
+          </AnimatePresence>
+        </div>
+      )}
+    </Card>
+  );
+};

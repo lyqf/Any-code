@@ -923,8 +923,71 @@ pub async fn mcp_get_all_servers() -> Result<std::collections::HashMap<String, s
 /// 获取所有应用的 MCP 服务器统一视图
 ///
 /// 返回合并后的服务器列表，每个服务器的 apps 字段标记了它在哪些应用中真正启用
+/// @deprecated 使用分引擎的API代替（mcp_get_engine_servers）
 #[tauri::command]
 pub async fn mcp_get_unified_servers() -> Result<std::collections::HashMap<String, McpServer>, String> {
     info!("Getting unified MCP servers from all apps");
     crate::mcp::get_unified_servers()
+}
+
+// ============================================================================
+// 多引擎独立隔离控制 API（新设计）
+// ============================================================================
+
+/// 获取指定引擎的 MCP 服务器列表
+///
+/// # 参数
+/// - `engine`: 引擎名称（"claude" | "codex" | "gemini"）
+///
+/// # 返回
+/// - Ok(HashMap<String, Value>): 该引擎的 MCP 服务器映射
+#[tauri::command]
+pub async fn mcp_get_engine_servers(
+    engine: String,
+) -> Result<std::collections::HashMap<String, serde_json::Value>, String> {
+    info!("获取 {} 引擎的 MCP 服务器列表", engine);
+
+    let app_type = crate::mcp::AppType::from_str(&engine)?;
+    crate::mcp::import_from_app(&app_type)
+}
+
+/// 在指定引擎中添加或更新 MCP 服务器
+///
+/// # 参数
+/// - `engine`: 引擎名称（"claude" | "codex" | "gemini"）
+/// - `id`: 服务器 ID
+/// - `server_spec`: 服务器规范（JSON）
+#[tauri::command]
+pub async fn mcp_upsert_engine_server(
+    engine: String,
+    id: String,
+    server_spec: serde_json::Value,
+) -> Result<String, String> {
+    info!("在 {} 引擎中添加/更新 MCP 服务器: {}", engine, id);
+
+    // 验证服务器规范
+    crate::mcp::validate_server_spec(&server_spec)?;
+
+    let app_type = crate::mcp::AppType::from_str(&engine)?;
+    crate::mcp::sync_server_to_app(&id, &server_spec, &app_type)?;
+
+    Ok(format!("成功在 {} 引擎中配置 MCP 服务器 '{}'", engine, id))
+}
+
+/// 从指定引擎中删除 MCP 服务器
+///
+/// # 参数
+/// - `engine`: 引擎名称（"claude" | "codex" | "gemini"）
+/// - `id`: 服务器 ID
+#[tauri::command]
+pub async fn mcp_delete_engine_server(engine: String, id: String) -> Result<String, String> {
+    info!("从 {} 引擎中删除 MCP 服务器: {}", engine, id);
+
+    let app_type = crate::mcp::AppType::from_str(&engine)?;
+    crate::mcp::remove_server_from_app(&id, &app_type)?;
+
+    Ok(format!(
+        "成功从 {} 引擎中删除 MCP 服务器 '{}'",
+        engine, id
+    ))
 }
