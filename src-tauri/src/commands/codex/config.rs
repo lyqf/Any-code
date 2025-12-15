@@ -38,6 +38,10 @@ pub struct CodexAvailability {
 /// 避免重复创建 WSL 进程检测可用性
 static CODEX_AVAILABILITY_CACHE: OnceCell<CodexAvailability> = OnceCell::const_new();
 
+/// 全局 Codex 模式配置缓存
+/// 避免重复创建 WSL 进程检测模式配置
+static CODEX_MODE_CONFIG_CACHE: OnceCell<CodexModeInfo> = OnceCell::const_new();
+
 /// Codex mode configuration info (for frontend display)
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -868,10 +872,23 @@ pub fn get_codex_command_candidates() -> Vec<String> {
 // ============================================================================
 
 /// Get Codex mode configuration
+/// 使用全局缓存避免重复检测，减少 WSL 进程创建
 #[tauri::command]
 pub async fn get_codex_mode_config() -> Result<CodexModeInfo, String> {
-    log::info!("[Codex] Getting mode configuration...");
+    // 使用缓存避免重复检测
+    let result = CODEX_MODE_CONFIG_CACHE
+        .get_or_init(|| async {
+            log::info!("[Codex] Getting mode configuration (first time)...");
+            do_get_codex_mode_config()
+        })
+        .await;
 
+    log::debug!("[Codex] Returning cached mode config: {:?}", result);
+    Ok(result.clone())
+}
+
+/// 实际执行 Codex 模式配置获取（内部函数）
+fn do_get_codex_mode_config() -> CodexModeInfo {
     let config = wsl_utils::get_codex_config();
     let wsl_config = wsl_utils::get_wsl_config();
 
@@ -895,14 +912,14 @@ pub async fn get_codex_mode_config() -> Result<CodexModeInfo, String> {
 
     let actual_mode = if wsl_config.enabled { "wsl" } else { "native" };
 
-    Ok(CodexModeInfo {
+    CodexModeInfo {
         mode: mode_str.to_string(),
         wsl_distro: config.wsl_distro.clone(),
         actual_mode: actual_mode.to_string(),
         native_available,
         wsl_available,
         available_distros,
-    })
+    }
 }
 
 /// Set Codex mode configuration

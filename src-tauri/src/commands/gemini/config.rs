@@ -6,8 +6,13 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
+use tokio::sync::OnceCell;
 
 use crate::commands::wsl_utils;
+
+/// 全局 Gemini WSL 模式配置缓存
+/// 避免重复创建 WSL 进程检测模式配置
+static GEMINI_WSL_MODE_CONFIG_CACHE: OnceCell<GeminiWslModeInfo> = OnceCell::const_new();
 
 // ============================================================================
 // Configuration Types
@@ -473,8 +478,23 @@ pub struct GeminiWslModeInfo {
 }
 
 /// Get Gemini WSL mode configuration
+/// 使用全局缓存避免重复检测，减少 WSL 进程创建
 #[tauri::command]
 pub async fn get_gemini_wsl_mode_config() -> Result<GeminiWslModeInfo, String> {
+    // 使用缓存避免重复检测
+    let result = GEMINI_WSL_MODE_CONFIG_CACHE
+        .get_or_init(|| async {
+            log::info!("[Gemini] Getting WSL mode configuration (first time)...");
+            do_get_gemini_wsl_mode_config()
+        })
+        .await;
+
+    log::debug!("[Gemini] Returning cached WSL mode config: {:?}", result);
+    Ok(result.clone())
+}
+
+/// 实际执行 Gemini WSL 模式配置获取（内部函数）
+fn do_get_gemini_wsl_mode_config() -> GeminiWslModeInfo {
     let config = wsl_utils::get_gemini_wsl_config();
     let runtime = wsl_utils::get_gemini_wsl_runtime();
 
@@ -494,7 +514,7 @@ pub async fn get_gemini_wsl_mode_config() -> Result<GeminiWslModeInfo, String> {
         None
     };
 
-    Ok(GeminiWslModeInfo {
+    GeminiWslModeInfo {
         mode: mode_str.to_string(),
         wsl_distro: config.wsl_distro.clone(),
         wsl_available,
@@ -503,7 +523,7 @@ pub async fn get_gemini_wsl_mode_config() -> Result<GeminiWslModeInfo, String> {
         wsl_gemini_path: runtime.gemini_path_in_wsl.clone(),
         wsl_gemini_version,
         native_available,
-    })
+    }
 }
 
 /// Set Gemini WSL mode configuration
