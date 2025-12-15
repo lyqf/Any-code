@@ -194,7 +194,8 @@ export class ClaudeSDKService {
     }
 
     if (options.systemPrompt) {
-      requestBody.system = options.systemPrompt;
+      // 第三方 API 代理可能需要数组格式的 system 字段
+      requestBody.system = [{ type: 'text', text: options.systemPrompt }];
     }
 
     console.log('[ClaudeSDK] sendMessageDirect to:', endpoint);
