@@ -9,8 +9,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Loader2, Plus, Trash2, Code, Settings } from "lucide-react";
 import { api, type MCPServerSpec } from "@/lib/api";
 
 interface MCPServerDialogProps {
@@ -71,6 +73,11 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
   const [newHeaderKey, setNewHeaderKey] = useState("");
   const [newHeaderValue, setNewHeaderValue] = useState("");
 
+  // JSON 模式状态
+  const [inputMode, setInputMode] = useState<"form" | "json">("form");
+  const [jsonInput, setJsonInput] = useState("");
+  const [jsonError, setJsonError] = useState<string | null>(null);
+
   // 初始化表单（编辑模式）
   useEffect(() => {
     if (open) {
@@ -83,6 +90,8 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
         setEnv(serverSpec.env || {});
         setCwd(serverSpec.cwd || "");
         setHeaders(serverSpec.headers || {});
+        // 编辑模式下生成 JSON
+        setJsonInput(JSON.stringify(serverSpec, null, 2));
       } else {
         // 新建模式：重置表单
         setId("");
@@ -93,7 +102,10 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
         setEnv({});
         setCwd("");
         setHeaders({});
+        setJsonInput("");
       }
+      setInputMode("form");
+      setJsonError(null);
     }
   }, [open, isEditMode, serverId, serverSpec]);
 
@@ -105,6 +117,13 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
       setArgs([...args, newArgInput.trim()]);
       setNewArgInput("");
     }
+  };
+
+  /**
+   * 更新参数
+   */
+  const handleUpdateArg = (index: number, value: string) => {
+    setArgs(args.map((arg, i) => (i === index ? value : arg)));
   };
 
   /**
@@ -123,6 +142,18 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
       setNewEnvKey("");
       setNewEnvValue("");
     }
+  };
+
+  /**
+   * 更新环境变量
+   */
+  const handleUpdateEnv = (oldKey: string, newKey: string, value: string) => {
+    const newEnv = { ...env };
+    if (oldKey !== newKey) {
+      delete newEnv[oldKey];
+    }
+    newEnv[newKey] = value;
+    setEnv(newEnv);
   };
 
   /**
@@ -146,6 +177,18 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
   };
 
   /**
+   * 更新请求头
+   */
+  const handleUpdateHeader = (oldKey: string, newKey: string, value: string) => {
+    const newHeaders = { ...headers };
+    if (oldKey !== newKey) {
+      delete newHeaders[oldKey];
+    }
+    newHeaders[newKey] = value;
+    setHeaders(newHeaders);
+  };
+
+  /**
    * 移除请求头
    */
   const handleRemoveHeader = (key: string) => {
@@ -155,30 +198,52 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
   };
 
   /**
+   * 解析 JSON 输入
+   */
+  const parseJsonInput = (): MCPServerSpec | null => {
+    try {
+      const parsed = JSON.parse(jsonInput);
+      setJsonError(null);
+      return parsed as MCPServerSpec;
+    } catch (e) {
+      setJsonError(`JSON 解析错误: ${e instanceof Error ? e.message : "格式无效"}`);
+      return null;
+    }
+  };
+
+  /**
    * 保存服务器
    */
   const handleSave = async () => {
-    // 验证
+    // 验证 ID
     if (!id.trim()) {
       alert("请输入服务器 ID");
       return;
     }
 
-    if (type === "stdio" && !command.trim()) {
-      alert("stdio 类型必须填写 command");
-      return;
-    }
+    let spec: MCPServerSpec;
 
-    if ((type === "http" || type === "sse") && !url.trim()) {
-      alert(`${type} 类型必须填写 URL`);
-      return;
-    }
+    if (inputMode === "json") {
+      // JSON 模式
+      const parsed = parseJsonInput();
+      if (!parsed) {
+        return;
+      }
+      spec = parsed;
+    } else {
+      // 表单模式验证
+      if (type === "stdio" && !command.trim()) {
+        alert("stdio 类型必须填写 command");
+        return;
+      }
 
-    setSaving(true);
+      if ((type === "http" || type === "sse") && !url.trim()) {
+        alert(`${type} 类型必须填写 URL`);
+        return;
+      }
 
-    try {
       // 构建服务器规范
-      const spec: MCPServerSpec = {
+      spec = {
         type,
         ...(type === "stdio" && {
           command,
@@ -191,7 +256,11 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
           ...(Object.keys(headers).length > 0 && { headers }),
         }),
       };
+    }
 
+    setSaving(true);
+
+    try {
       // 调用 API
       await api.mcpUpsertEngineServer(engine, id.trim(), spec);
 
@@ -231,20 +300,35 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
             </p>
           </div>
 
-          {/* Transport Type */}
-          <div>
-            <Label htmlFor="transport-type">传输类型 *</Label>
-            <Select value={type} onValueChange={(v) => setType(v as any)}>
-              <SelectTrigger id="transport-type">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="stdio">stdio (标准输入输出)</SelectItem>
-                <SelectItem value="http">http (HTTP 流式)</SelectItem>
-                <SelectItem value="sse">sse (Server-Sent Events)</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+          {/* 输入模式切换 */}
+          <Tabs value={inputMode} onValueChange={(v) => setInputMode(v as "form" | "json")}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="form" className="gap-2">
+                <Settings className="h-4 w-4" />
+                表单模式
+              </TabsTrigger>
+              <TabsTrigger value="json" className="gap-2">
+                <Code className="h-4 w-4" />
+                JSON 模式
+              </TabsTrigger>
+            </TabsList>
+
+            {/* 表单模式 */}
+            <TabsContent value="form" className="space-y-4 mt-4">
+              {/* Transport Type */}
+              <div>
+                <Label htmlFor="transport-type">传输类型 *</Label>
+                <Select value={type} onValueChange={(v) => setType(v as any)}>
+                  <SelectTrigger id="transport-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="stdio">stdio (标准输入输出)</SelectItem>
+                    <SelectItem value="http">http (HTTP 流式)</SelectItem>
+                    <SelectItem value="sse">sse (Server-Sent Events)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
 
           {/* stdio 配置 */}
           {type === "stdio" && (
@@ -266,7 +350,12 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
                 <div className="space-y-2">
                   {args.map((arg, index) => (
                     <div key={index} className="flex items-center gap-2">
-                      <Input value={arg} disabled className="flex-1" />
+                      <Input
+                        value={arg}
+                        onChange={(e) => handleUpdateArg(index, e.target.value)}
+                        className="flex-1"
+                        placeholder={`参数 ${index + 1}`}
+                      />
                       <Button
                         variant="ghost"
                         size="sm"
@@ -311,9 +400,19 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
                 <div className="space-y-2">
                   {Object.entries(env).map(([key, value]) => (
                     <div key={key} className="flex items-center gap-2">
-                      <Input value={key} disabled className="flex-1" />
+                      <Input
+                        value={key}
+                        onChange={(e) => handleUpdateEnv(key, e.target.value, value)}
+                        className="flex-1"
+                        placeholder="KEY"
+                      />
                       <span className="text-muted-foreground">=</span>
-                      <Input value={value} disabled className="flex-1" />
+                      <Input
+                        value={value}
+                        onChange={(e) => handleUpdateEnv(key, key, e.target.value)}
+                        className="flex-1"
+                        placeholder="value"
+                      />
                       <Button
                         variant="ghost"
                         size="sm"
@@ -371,9 +470,19 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
                 <div className="space-y-2">
                   {Object.entries(headers).map(([key, value]) => (
                     <div key={key} className="flex items-center gap-2">
-                      <Input value={key} disabled className="flex-1" />
+                      <Input
+                        value={key}
+                        onChange={(e) => handleUpdateHeader(key, e.target.value, value)}
+                        className="flex-1"
+                        placeholder="Header-Name"
+                      />
                       <span className="text-muted-foreground">:</span>
-                      <Input value={value} disabled className="flex-1" />
+                      <Input
+                        value={value}
+                        onChange={(e) => handleUpdateHeader(key, key, e.target.value)}
+                        className="flex-1"
+                        placeholder="value"
+                      />
                       <Button
                         variant="ghost"
                         size="sm"
@@ -410,6 +519,37 @@ export const MCPServerDialog: React.FC<MCPServerDialogProps> = ({
               </div>
             </>
           )}
+            </TabsContent>
+
+            {/* JSON 模式 */}
+            <TabsContent value="json" className="space-y-4 mt-4">
+              <div>
+                <Label>服务器配置 JSON</Label>
+                <Textarea
+                  value={jsonInput}
+                  onChange={(e) => {
+                    setJsonInput(e.target.value);
+                    setJsonError(null);
+                  }}
+                  placeholder={`{
+  "type": "stdio",
+  "command": "node",
+  "args": ["server.js"],
+  "env": {
+    "API_KEY": "your-key"
+  }
+}`}
+                  className="font-mono text-sm min-h-[300px]"
+                />
+                {jsonError && (
+                  <p className="text-sm text-destructive mt-2">{jsonError}</p>
+                )}
+                <p className="text-xs text-muted-foreground mt-2">
+                  直接输入或粘贴 MCP 服务器配置的 JSON 格式
+                </p>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
 
         <DialogFooter>
