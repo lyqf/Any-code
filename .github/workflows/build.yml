@@ -142,7 +142,7 @@ jobs:
           pattern: build-*
           merge-multiple: true
 
-      - name: Rename macOS updater files
+      - name: Rename updater files for consistent naming
         run: |
           VERSION="${GITHUB_REF_NAME#v}"
 
@@ -174,7 +174,35 @@ jobs:
             echo "Renamed: $X64_SIG -> $X64_DIR/any-code_${VERSION}_x64.app.tar.gz.sig"
           fi
 
-          echo "macOS updater files renamed successfully"
+          # Find and rename Windows NSIS updater files (Any.Code_* -> any-code_*)
+          WIN_NSIS=$(find artifacts -name "*-setup.exe" ! -name "*.sig" -type f | head -n 1)
+          WIN_NSIS_SIG=$(find artifacts -name "*-setup.exe.sig" -type f | head -n 1)
+          if [ -n "$WIN_NSIS" ]; then
+            WIN_DIR=$(dirname "$WIN_NSIS")
+            mv "$WIN_NSIS" "$WIN_DIR/any-code_${VERSION}_x64-setup.exe"
+            echo "Renamed: $WIN_NSIS -> $WIN_DIR/any-code_${VERSION}_x64-setup.exe"
+          fi
+          if [ -n "$WIN_NSIS_SIG" ]; then
+            WIN_DIR=$(dirname "$WIN_NSIS_SIG")
+            mv "$WIN_NSIS_SIG" "$WIN_DIR/any-code_${VERSION}_x64-setup.exe.sig"
+            echo "Renamed: $WIN_NSIS_SIG -> $WIN_DIR/any-code_${VERSION}_x64-setup.exe.sig"
+          fi
+
+          # Find and rename Linux AppImage updater files (Any.Code_* -> any-code_*)
+          LINUX_APPIMAGE=$(find artifacts -name "*.AppImage" ! -name "*.sig" -type f | head -n 1)
+          LINUX_APPIMAGE_SIG=$(find artifacts -name "*.AppImage.sig" -type f | head -n 1)
+          if [ -n "$LINUX_APPIMAGE" ]; then
+            LINUX_DIR=$(dirname "$LINUX_APPIMAGE")
+            mv "$LINUX_APPIMAGE" "$LINUX_DIR/any-code_${VERSION}_amd64.AppImage"
+            echo "Renamed: $LINUX_APPIMAGE -> $LINUX_DIR/any-code_${VERSION}_amd64.AppImage"
+          fi
+          if [ -n "$LINUX_APPIMAGE_SIG" ]; then
+            LINUX_DIR=$(dirname "$LINUX_APPIMAGE_SIG")
+            mv "$LINUX_APPIMAGE_SIG" "$LINUX_DIR/any-code_${VERSION}_amd64.AppImage.sig"
+            echo "Renamed: $LINUX_APPIMAGE_SIG -> $LINUX_DIR/any-code_${VERSION}_amd64.AppImage.sig"
+          fi
+
+          echo "All updater files renamed successfully"
           echo "Signature files:"
           find artifacts -name "*.sig" -type f
 
