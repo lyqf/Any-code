@@ -10,6 +10,8 @@ import { motion } from "framer-motion";
 import { formatDuration } from "@/lib/pricing";
 import { ExecutionEngineSelector, type ExecutionEngineConfig } from "@/components/ExecutionEngineSelector";
 import { ModelSelector } from "./ModelSelector";
+import { CodexModelSelector } from "./CodexModelSelector";
+import { GeminiModelSelector } from "./GeminiModelSelector";
 import { ThinkingModeToggle } from "./ThinkingModeToggle";
 import { PlanModeToggle } from "./PlanModeToggle";
 import { SessionToolbar } from "@/components/SessionToolbar";
@@ -98,7 +100,7 @@ export const ControlBar: React.FC<ControlBarProps> = ({
         onChange={setExecutionEngineConfig}
       />
 
-      {/* Only show Claude-specific controls for Claude Code */}
+      {/* Claude-specific controls */}
       {executionEngineConfig.engine === 'claude' && (
         <>
           <ModelSelector
@@ -122,6 +124,30 @@ export const ControlBar: React.FC<ControlBarProps> = ({
             />
           )}
         </>
+      )}
+
+      {/* Codex-specific controls */}
+      {executionEngineConfig.engine === 'codex' && (
+        <CodexModelSelector
+          selectedModel={executionEngineConfig.codexModel}
+          onModelChange={(model) => setExecutionEngineConfig({
+            ...executionEngineConfig,
+            codexModel: model,
+          })}
+          disabled={disabled}
+        />
+      )}
+
+      {/* Gemini-specific controls */}
+      {executionEngineConfig.engine === 'gemini' && (
+        <GeminiModelSelector
+          selectedModel={executionEngineConfig.geminiModel}
+          onModelChange={(model) => setExecutionEngineConfig({
+            ...executionEngineConfig,
+            geminiModel: model,
+          })}
+          disabled={disabled}
+        />
       )}
 
       {/* Session Cost with Details */}

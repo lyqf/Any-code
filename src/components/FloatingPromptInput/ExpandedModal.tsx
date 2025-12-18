@@ -9,6 +9,8 @@ import { Switch } from "@/components/ui/switch";
 import { ImagePreview } from "../ImagePreview";
 import { ExecutionEngineSelector, type ExecutionEngineConfig } from "@/components/ExecutionEngineSelector";
 import { ModelSelector } from "./ModelSelector";
+import { CodexModelSelector } from "./CodexModelSelector";
+import { GeminiModelSelector } from "./GeminiModelSelector";
 import { ThinkingModeToggle } from "./ThinkingModeToggle";
 import { PlanModeToggle } from "./PlanModeToggle";
 import { ModelType, ModelConfig } from "./types";
@@ -238,7 +240,7 @@ export const ExpandedModal = forwardRef<HTMLTextAreaElement, ExpandedModalProps>
               onChange={setExecutionEngineConfig}
             />
 
-            {/* Only show model selector for Claude Code */}
+            {/* Claude-specific controls */}
             {executionEngineConfig.engine === 'claude' && (
               <>
                 <ModelSelector
@@ -260,6 +262,30 @@ export const ExpandedModal = forwardRef<HTMLTextAreaElement, ExpandedModalProps>
                   />
                 )}
               </>
+            )}
+
+            {/* Codex-specific controls */}
+            {executionEngineConfig.engine === 'codex' && (
+              <CodexModelSelector
+                selectedModel={executionEngineConfig.codexModel}
+                onModelChange={(model) => setExecutionEngineConfig({
+                  ...executionEngineConfig,
+                  codexModel: model,
+                })}
+                disabled={disabled}
+              />
+            )}
+
+            {/* Gemini-specific controls */}
+            {executionEngineConfig.engine === 'gemini' && (
+              <GeminiModelSelector
+                selectedModel={executionEngineConfig.geminiModel}
+                onModelChange={(model) => setExecutionEngineConfig({
+                  ...executionEngineConfig,
+                  geminiModel: model,
+                })}
+                disabled={disabled}
+              />
             )}
           </div>
 
