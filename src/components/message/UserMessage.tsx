@@ -49,6 +49,21 @@ const isSlashCommandOutput = (text: string): boolean => {
 };
 
 /**
+ * 检查是否是斜杠命令输入
+ * 用户输入的斜杠命令（如 /cost, /context, /help）以 / 开头
+ * 排除路径（包含 \ 或多个 /）和长文本
+ */
+const isSlashCommandInput = (text: string): boolean => {
+  const trimmed = text.trim();
+  // 必须以 / 开头，不能包含换行，不能太长，不能是路径
+  return trimmed.startsWith('/')
+    && !trimmed.includes('\n')
+    && trimmed.length < 100
+    && !trimmed.includes('\\')  // 排除 Windows 路径
+    && (trimmed.match(/\//g) || []).length === 1;  // 只有一个 /，排除 URL 和路径
+};
+
+/**
  * 格式化斜杠命令输出
  * 提取 <local-command-stdout> 标签内的内容并美化显示
  */
@@ -289,6 +304,8 @@ export const UserMessage: React.FC<UserMessageProps> = ({
   const isSkills = isSkillsMessage(text);
   // 🆕 检查是否是斜杠命令输出
   const isCommandOutput = isSlashCommandOutput(text);
+  // 🆕 检查是否是斜杠命令输入（如 /cost, /help）- 不应显示撤回按钮
+  const isSlashCommand = isSlashCommandInput(text);
   // 使用清理后的文本（移除图片路径），但特殊消息保持原样
   const displayContent = isSkills
     ? formatSkillsMessage(text)
@@ -406,7 +423,7 @@ export const UserMessage: React.FC<UserMessageProps> = ({
                 >
                   {displayContent}
                   {/* 占位符，确保文字不遮挡绝对定位的按钮 */}
-                  {showRevertButton && !isSkills && !isCommandOutput && (
+                  {showRevertButton && !isSkills && !isCommandOutput && !isSlashCommand && (
                     <span className="inline-block w-8 h-4 align-middle select-none" aria-hidden="true" />
                   )}
                 </div>
@@ -434,8 +451,8 @@ export const UserMessage: React.FC<UserMessageProps> = ({
             )}
           </div>
 
-          {/* 撤回按钮和警告图标 - Skills/命令输出消息不显示撤回按钮 */}
-          {showRevertButton && !isSkills && !isCommandOutput && (
+          {/* 撤回按钮和警告图标 - Skills/命令输出/斜杠命令消息不显示撤回按钮 */}
+          {showRevertButton && !isSkills && !isCommandOutput && !isSlashCommand && (
             <div className="absolute bottom-0 right-0 flex items-center justify-end gap-1">
               {/* CLI 提示词警告图标 */}
               {hasWarning && (
