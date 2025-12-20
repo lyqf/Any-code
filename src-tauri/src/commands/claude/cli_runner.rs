@@ -739,21 +739,20 @@ async fn spawn_claude_process(
     let session_id_holder: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let run_id_holder: Arc<Mutex<Option<i64>>> = Arc::new(Mutex::new(None));
 
-    // 🔒 CRITICAL FIX: 移除单例限制，支持多会话并发
-    // 旧逻辑会在启动新会话时杀死现有会话，导致并发问题
-    // 现在每个会话独立运行，通过 ProcessRegistry 统一管理
+    // 🔒 CRITICAL FIX: 不再使用全局 ClaudeProcessState 管理进程生命周期
+    // 原因：全局单例只能存储一个 child，多会话并发时会互相覆盖
+    // 解决：每个进程独立管理自己的 child，取消功能通过 ProcessRegistry 实现
     //
-    // 注意：ClaudeProcessState 仅作为备选取消机制保留（存储最新的进程）
-    // 但不再杀死现有进程
+    // ClaudeProcessState 仅作为向后兼容的备选取消机制（存储最新进程的 PID）
     let claude_state = app.state::<ClaudeProcessState>();
     {
         let mut current_process = claude_state.current_process.lock().await;
-        // 🔒 FIX: 不再杀死现有进程，允许多会话并发运行
-        // 旧进程会通过 ProcessRegistry 继续被跟踪和管理
+        // 仅用于记录，不影响进程管理
         if current_process.is_some() {
-            log::info!("Another Claude process is running, but allowing concurrent sessions");
+            log::info!("Another Claude process is running, allowing concurrent sessions");
         }
-        *current_process = Some(child);
+        // 不再存储 child，改为独立管理
+        *current_process = None;
     }
 
     // Check if auto-compact state is available
@@ -939,8 +938,9 @@ async fn spawn_claude_process(
     });
 
     // Wait for the process to complete
+    // 🔒 CRITICAL FIX: 直接将 child 移动到 wait task 中，而不是从全局 state 取出
+    // 这样每个进程独立管理自己的生命周期，支持真正的多会话并发
     let app_handle_wait = app.clone();
-    let claude_state_wait = claude_state.current_process.clone();
     let session_id_holder_clone3 = session_id_holder.clone();
     let run_id_holder_clone2 = run_id_holder.clone();
     let registry_clone2 = registry.0.clone();
@@ -950,57 +950,55 @@ async fn spawn_claude_process(
         let _ = stdout_task.await;
         let _ = stderr_task.await;
 
-        // Get the child from the state to wait on it
-        let mut current_process = claude_state_wait.lock().await;
-        if let Some(mut child) = current_process.take() {
-            match child.wait().await {
-                Ok(status) => {
-                    log::info!("Claude process exited with status: {}", status);
-                    // Add a small delay to ensure all messages are processed
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    if let Some(ref session_id) = *session_id_holder_clone3.lock().unwrap() {
-                        // ✨ Phase 2: Emit state change event
-                        let event_payload = serde_json::json!({
-                            "session_id": session_id,
-                            "status": "stopped",
-                            "success": status.success(),
-                        });
-                        let _ = app_handle_wait.emit("claude-session-state", &event_payload);
-
-                        let _ = app_handle_wait
-                            .emit(&format!("claude-complete:{}", session_id), status.success());
-                    }
-                    // 🔒 CRITICAL FIX: 全局事件包含 tab_id
-                    let global_payload = serde_json::json!({
-                        "tab_id": tab_id_for_complete,
-                        "payload": status.success()
+        // 🔒 CRITICAL FIX: 直接等待 child，不再从全局 state 取出
+        // child 已经被移动到这个 async block 中
+        match child.wait().await {
+            Ok(status) => {
+                log::info!("Claude process exited with status: {}", status);
+                // Add a small delay to ensure all messages are processed
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                if let Some(ref session_id) = *session_id_holder_clone3.lock().unwrap() {
+                    // ✨ Phase 2: Emit state change event
+                    let event_payload = serde_json::json!({
+                        "session_id": session_id,
+                        "status": "stopped",
+                        "success": status.success(),
                     });
-                    let _ = app_handle_wait.emit("claude-complete", &global_payload);
-                }
-                Err(e) => {
-                    log::error!("Failed to wait for Claude process: {}", e);
-                    // Add a small delay to ensure all messages are processed
-                    tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-                    if let Some(ref session_id) = *session_id_holder_clone3.lock().unwrap() {
-                        // ✨ Phase 2: Emit state change event for error case
-                        let event_payload = serde_json::json!({
-                            "session_id": session_id,
-                            "status": "stopped",
-                            "success": false,
-                            "error": e.to_string(),
-                        });
-                        let _ = app_handle_wait.emit("claude-session-state", &event_payload);
+                    let _ = app_handle_wait.emit("claude-session-state", &event_payload);
 
-                        let _ =
-                            app_handle_wait.emit(&format!("claude-complete:{}", session_id), false);
-                    }
-                    // 🔒 CRITICAL FIX: 全局事件包含 tab_id
-                    let global_payload = serde_json::json!({
-                        "tab_id": tab_id_for_complete,
-                        "payload": false
-                    });
-                    let _ = app_handle_wait.emit("claude-complete", &global_payload);
+                    let _ = app_handle_wait
+                        .emit(&format!("claude-complete:{}", session_id), status.success());
                 }
+                // 🔒 CRITICAL FIX: 全局事件包含 tab_id
+                let global_payload = serde_json::json!({
+                    "tab_id": tab_id_for_complete,
+                    "payload": status.success()
+                });
+                let _ = app_handle_wait.emit("claude-complete", &global_payload);
+            }
+            Err(e) => {
+                log::error!("Failed to wait for Claude process: {}", e);
+                // Add a small delay to ensure all messages are processed
+                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+                if let Some(ref session_id) = *session_id_holder_clone3.lock().unwrap() {
+                    // ✨ Phase 2: Emit state change event for error case
+                    let event_payload = serde_json::json!({
+                        "session_id": session_id,
+                        "status": "stopped",
+                        "success": false,
+                        "error": e.to_string(),
+                    });
+                    let _ = app_handle_wait.emit("claude-session-state", &event_payload);
+
+                    let _ =
+                        app_handle_wait.emit(&format!("claude-complete:{}", session_id), false);
+                }
+                // 🔒 CRITICAL FIX: 全局事件包含 tab_id
+                let global_payload = serde_json::json!({
+                    "tab_id": tab_id_for_complete,
+                    "payload": false
+                });
+                let _ = app_handle_wait.emit("claude-complete", &global_payload);
             }
         }
 
@@ -1008,9 +1006,6 @@ async fn spawn_claude_process(
         if let Some(run_id) = *run_id_holder_clone2.lock().unwrap() {
             let _ = registry_clone2.unregister_process(run_id);
         }
-
-        // Clear the process from state
-        *current_process = None;
     });
 
     Ok(())
