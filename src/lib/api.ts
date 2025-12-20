@@ -1063,25 +1063,28 @@ export const api = {
   /**
    * Executes a new interactive Claude Code session with streaming output
    * @param planMode - Enable Plan Mode for read-only research and planning
+   * @param tabId - Unique identifier for the tab, used to filter global events
    */
-  async executeClaudeCode(projectPath: string, prompt: string, model: string, planMode?: boolean, maxThinkingTokens?: number): Promise<void> {
-    return invoke("execute_claude_code", { projectPath, prompt, model, planMode, maxThinkingTokens });
+  async executeClaudeCode(projectPath: string, prompt: string, model: string, planMode?: boolean, maxThinkingTokens?: number, tabId?: string): Promise<void> {
+    return invoke("execute_claude_code", { projectPath, prompt, model, planMode, maxThinkingTokens, tabId });
   },
 
   /**
    * Continues an existing Claude Code conversation with streaming output
    * @param planMode - Enable Plan Mode for read-only research and planning
+   * @param tabId - Unique identifier for the tab, used to filter global events
    */
-  async continueClaudeCode(projectPath: string, prompt: string, model: string, planMode?: boolean, maxThinkingTokens?: number): Promise<void> {
-    return invoke("continue_claude_code", { projectPath, prompt, model, planMode, maxThinkingTokens });
+  async continueClaudeCode(projectPath: string, prompt: string, model: string, planMode?: boolean, maxThinkingTokens?: number, tabId?: string): Promise<void> {
+    return invoke("continue_claude_code", { projectPath, prompt, model, planMode, maxThinkingTokens, tabId });
   },
 
   /**
    * Resumes an existing Claude Code session by ID with streaming output
    * @param planMode - Enable Plan Mode for read-only research and planning
+   * @param tabId - Unique identifier for the tab, used to filter global events
    */
-  async resumeClaudeCode(projectPath: string, sessionId: string, prompt: string, model: string, planMode?: boolean, maxThinkingTokens?: number): Promise<void> {
-    return invoke("resume_claude_code", { projectPath, sessionId, prompt, model, planMode, maxThinkingTokens });
+  async resumeClaudeCode(projectPath: string, sessionId: string, prompt: string, model: string, planMode?: boolean, maxThinkingTokens?: number, tabId?: string): Promise<void> {
+    return invoke("resume_claude_code", { projectPath, sessionId, prompt, model, planMode, maxThinkingTokens, tabId });
   },
 
   /**

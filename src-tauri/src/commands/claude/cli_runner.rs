@@ -276,6 +276,7 @@ pub async fn execute_claude_code(
     model: String,
     plan_mode: Option<bool>,
     max_thinking_tokens: Option<u32>,
+    tab_id: Option<String>,
 ) -> Result<(), String> {
     let plan_mode = plan_mode.unwrap_or(false);
     log::info!(
@@ -326,7 +327,7 @@ pub async fn execute_claude_code(
         Some(&mapped_model),
         max_thinking_tokens,
     )?;
-    spawn_claude_process(app, cmd, prompt, model, project_path).await
+    spawn_claude_process(app, cmd, prompt, model, project_path, tab_id).await
 }
 
 /// Continue an existing Claude Code conversation with streaming output
@@ -339,6 +340,7 @@ pub async fn continue_claude_code(
     model: String,
     plan_mode: Option<bool>,
     max_thinking_tokens: Option<u32>,
+    tab_id: Option<String>,
 ) -> Result<(), String> {
     let plan_mode = plan_mode.unwrap_or(false);
     log::info!(
@@ -392,7 +394,7 @@ pub async fn continue_claude_code(
         Some(&mapped_model),
         max_thinking_tokens,
     )?;
-    spawn_claude_process(app, cmd, prompt, model, project_path).await
+    spawn_claude_process(app, cmd, prompt, model, project_path, tab_id).await
 }
 
 /// Resume an existing Claude Code session by ID with streaming output
@@ -406,6 +408,7 @@ pub async fn resume_claude_code(
     model: String,
     plan_mode: Option<bool>,
     max_thinking_tokens: Option<u32>,
+    tab_id: Option<String>,
 ) -> Result<(), String> {
     let plan_mode = plan_mode.unwrap_or(false);
     log::info!(
@@ -482,6 +485,7 @@ pub async fn resume_claude_code(
         prompt.clone(),
         model.clone(),
         project_path.clone(),
+        tab_id.clone(),
     )
     .await
     {
@@ -499,6 +503,7 @@ pub async fn resume_claude_code(
                 model,
                 Some(plan_mode),
                 max_thinking_tokens,
+                tab_id,
             )
             .await
         }
@@ -657,12 +662,14 @@ fn is_slash_command(prompt: &str) -> bool {
 /// Helper function to spawn Claude process and handle streaming
 /// 🔥 修复：斜杠命令通过 -p 参数传递（触发命令解析），普通 prompt 通过 stdin 管道传递
 /// 这样既支持斜杠命令，又避免操作系统命令行长度限制（Windows ~8KB, Linux/macOS ~128KB-2MB）
+/// 🔒 CRITICAL FIX: 添加 tab_id 参数，用于全局事件中标识消息来源，解决新建会话并发时的消息串扰
 async fn spawn_claude_process(
     app: AppHandle,
     mut cmd: Command,
     prompt: String,
     model: String,
     project_path: String,
+    tab_id: Option<String>,
 ) -> Result<(), String> {
     use std::sync::Mutex;
     use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -763,6 +770,8 @@ async fn spawn_claude_process(
     let project_path_clone = project_path.clone();
     let prompt_clone = prompt.clone();
     let model_clone = model.clone();
+    // 🔒 CRITICAL FIX: 克隆 tab_id 用于事件发送
+    let tab_id_for_stdout = tab_id.clone();
     let stdout_task = tokio::spawn(async move {
         let mut lines = stdout_reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -899,13 +908,19 @@ async fn spawn_claude_process(
             if let Some(ref session_id) = *session_id_holder_clone.lock().unwrap() {
                 let _ = app_handle.emit(&format!("claude-output:{}", session_id), &line);
             }
-            // Also emit to the generic event for backward compatibility and early messages
-            let _ = app_handle.emit("claude-output", &line);
+            // 🔒 CRITICAL FIX: 全局事件包含 tab_id，用于前端过滤新建会话的消息
+            let global_payload = serde_json::json!({
+                "tab_id": tab_id_for_stdout,
+                "payload": &line
+            });
+            let _ = app_handle.emit("claude-output", &global_payload);
         }
     });
 
     let app_handle_stderr = app.clone();
     let session_id_holder_clone2 = session_id_holder.clone();
+    // 🔒 CRITICAL FIX: 克隆 tab_id 用于 stderr 事件
+    let tab_id_for_stderr = tab_id.clone();
     let stderr_task = tokio::spawn(async move {
         let mut lines = stderr_reader.lines();
         while let Ok(Some(line)) = lines.next_line().await {
@@ -914,8 +929,12 @@ async fn spawn_claude_process(
             if let Some(ref session_id) = *session_id_holder_clone2.lock().unwrap() {
                 let _ = app_handle_stderr.emit(&format!("claude-error:{}", session_id), &line);
             }
-            // Also emit to the generic event for backward compatibility
-            let _ = app_handle_stderr.emit("claude-error", &line);
+            // 🔒 CRITICAL FIX: 全局事件包含 tab_id
+            let global_payload = serde_json::json!({
+                "tab_id": tab_id_for_stderr,
+                "payload": &line
+            });
+            let _ = app_handle_stderr.emit("claude-error", &global_payload);
         }
     });
 
@@ -925,6 +944,8 @@ async fn spawn_claude_process(
     let session_id_holder_clone3 = session_id_holder.clone();
     let run_id_holder_clone2 = run_id_holder.clone();
     let registry_clone2 = registry.0.clone();
+    // 🔒 CRITICAL FIX: 克隆 tab_id 用于 complete 事件
+    let tab_id_for_complete = tab_id;
     tokio::spawn(async move {
         let _ = stdout_task.await;
         let _ = stderr_task.await;
@@ -949,8 +970,12 @@ async fn spawn_claude_process(
                         let _ = app_handle_wait
                             .emit(&format!("claude-complete:{}", session_id), status.success());
                     }
-                    // Also emit to the generic event for backward compatibility
-                    let _ = app_handle_wait.emit("claude-complete", status.success());
+                    // 🔒 CRITICAL FIX: 全局事件包含 tab_id
+                    let global_payload = serde_json::json!({
+                        "tab_id": tab_id_for_complete,
+                        "payload": status.success()
+                    });
+                    let _ = app_handle_wait.emit("claude-complete", &global_payload);
                 }
                 Err(e) => {
                     log::error!("Failed to wait for Claude process: {}", e);
@@ -969,8 +994,12 @@ async fn spawn_claude_process(
                         let _ =
                             app_handle_wait.emit(&format!("claude-complete:{}", session_id), false);
                     }
-                    // Also emit to the generic event for backward compatibility
-                    let _ = app_handle_wait.emit("claude-complete", false);
+                    // 🔒 CRITICAL FIX: 全局事件包含 tab_id
+                    let global_payload = serde_json::json!({
+                        "tab_id": tab_id_for_complete,
+                        "payload": false
+                    });
+                    let _ = app_handle_wait.emit("claude-complete", &global_payload);
                 }
             }
         }

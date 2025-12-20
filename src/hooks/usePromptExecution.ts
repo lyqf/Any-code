@@ -148,6 +148,12 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
     isPlanModeRef.current = isPlanMode;
   }, [isPlanMode]);
 
+  // ============================================================================
+  // 🔒 CRITICAL FIX: 生成唯一的 tabId 用于会话隔离
+  // 解决问题：新建会话并发时全局事件的消息串扰
+  // ============================================================================
+  const tabIdRef = useRef<string>(crypto.randomUUID());
+
   const codexThreadIdRef = useRef<string | null>(null);
 
   useEffect(() => {
@@ -1235,22 +1241,33 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
         // ====================================================================
         // Generic Listeners (Catch-all) - FIXED to prevent cross-session data leakage
         // ====================================================================
-        const genericOutputUnlisten = await listen<string>('claude-output', async (event) => {
+        // 🔒 CRITICAL FIX: 全局事件现在格式为 { tab_id: string | null, payload: string }
+        const genericOutputUnlisten = await listen<{ tab_id: string | null; payload: string }>('claude-output', async (event) => {
           // 🔧 CRITICAL FIX: 只在尚未收到会话ID时处理全局事件
           if (!hasActiveSessionRef.current) return;
+
+          // 🔒 CRITICAL FIX: 使用 tab_id 过滤消息，这是最可靠的会话隔离方式
+          const eventTabId = event.payload.tab_id;
+          const messagePayload = event.payload.payload;
+
+          // 如果事件包含 tab_id，则只处理匹配当前标签页的消息
+          if (eventTabId && eventTabId !== tabIdRef.current) {
+            // 消息来自不同标签页，忽略
+            return;
+          }
 
           // 🔒 CRITICAL FIX: Session Isolation - 严格隔离全局事件处理
           // 问题: 多个标签页都监听全局 'claude-output',导致消息被多个会话接收
           // 解决: 只在会话ID未知的早期阶段处理全局事件
           if (hasAttachedSessionListeners) {
              try {
-                const msg = JSON.parse(event.payload) as ClaudeStreamMessage;
+                const msg = JSON.parse(messagePayload) as ClaudeStreamMessage;
                 // 只处理新会话的 init 消息(session_id 不同)
                 if (msg.type === 'system' && msg.subtype === 'init' && msg.session_id && msg.session_id !== currentSessionId) {
                    // Fall through to processing below
                 } else {
                    // ⚠️ 忽略所有其他消息 - 应该由会话特定监听器处理
-                   
+
                    return;
                 }
              } catch {
@@ -1260,7 +1277,7 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
 
           // Attempt to extract session_id on the fly (for the very first init)
           try {
-            const msg = JSON.parse(event.payload) as ClaudeStreamMessage;
+            const msg = JSON.parse(messagePayload) as ClaudeStreamMessage;
 
             // 🔒 CRITICAL FIX #1: 使用 session_id 验证消息是否属于当前会话
             // 这是最重要的检查：如果消息包含 session_id，且我们已经有 claudeSessionId，
@@ -1287,7 +1304,7 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
 
             // Always process the message if we haven't established a session yet
             // Or if it is the init message
-            handleStreamMessage(event.payload, userInputTranslation || undefined);
+            handleStreamMessage(messagePayload, userInputTranslation || undefined);
 
             if (msg.type === 'system' && msg.subtype === 'init' && msg.session_id) {
               if (!currentSessionId || currentSessionId !== msg.session_id) {
@@ -1375,17 +1392,32 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
           }
         });
 
-        const genericErrorUnlisten = await listen<string>('claude-error', (evt) => {
+        // 🔒 CRITICAL FIX: 全局事件现在格式为 { tab_id: string | null, payload: string }
+        const genericErrorUnlisten = await listen<{ tab_id: string | null; payload: string }>('claude-error', (evt) => {
           // 🔧 FIX: Only process if this tab has an active session
           if (!hasActiveSessionRef.current) return;
-          console.error('Claude error:', evt.payload);
-          setError(evt.payload);
+
+          // 🔒 CRITICAL FIX: 使用 tab_id 过滤消息
+          const eventTabId = evt.payload.tab_id;
+          if (eventTabId && eventTabId !== tabIdRef.current) {
+            return;
+          }
+
+          console.error('Claude error:', evt.payload.payload);
+          setError(evt.payload.payload);
         });
 
-        const genericCompleteUnlisten = await listen<boolean>('claude-complete', () => {
+        // 🔒 CRITICAL FIX: 全局事件现在格式为 { tab_id: string | null, payload: boolean }
+        const genericCompleteUnlisten = await listen<{ tab_id: string | null; payload: boolean }>('claude-complete', (evt) => {
           // 🔧 FIX: Only process if this tab has an active session
           if (!hasActiveSessionRef.current) return;
-          
+
+          // 🔒 CRITICAL FIX: 使用 tab_id 过滤消息
+          const eventTabId = evt.payload.tab_id;
+          if (eventTabId && eventTabId !== tabIdRef.current) {
+            return;
+          }
+
           processComplete();
         });
 
@@ -1584,19 +1616,21 @@ export function usePromptExecution(config: UsePromptExecutionConfig): UsePromptE
         // ====================================================================
         // 🔧 Fix: 使用 isPlanModeRef.current 获取最新值，确保批准计划后不带 --plan
         const currentPlanMode = isPlanModeRef.current;
+        // 🔒 CRITICAL FIX: 传递 tabId 用于全局事件过滤
+        const tabId = tabIdRef.current;
         if (effectiveSession && !isFirstPrompt) {
           // Resume existing session
           try {
-            await api.resumeClaudeCode(projectPath, effectiveSession.id, processedPrompt, model, currentPlanMode, maxThinkingTokens);
+            await api.resumeClaudeCode(projectPath, effectiveSession.id, processedPrompt, model, currentPlanMode, maxThinkingTokens, tabId);
           } catch (resumeError) {
             console.warn('[usePromptExecution] Resume failed, falling back to continue mode:', resumeError);
             // Fallback to continue mode if resume fails
-            await api.continueClaudeCode(projectPath, processedPrompt, model, currentPlanMode, maxThinkingTokens);
+            await api.continueClaudeCode(projectPath, processedPrompt, model, currentPlanMode, maxThinkingTokens, tabId);
           }
         } else {
           // Start new session
           setIsFirstPrompt(false);
-          await api.executeClaudeCode(projectPath, processedPrompt, model, currentPlanMode, maxThinkingTokens);
+          await api.executeClaudeCode(projectPath, processedPrompt, model, currentPlanMode, maxThinkingTokens, tabId);
         }
       }
 
