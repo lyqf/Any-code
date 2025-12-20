@@ -111,6 +111,7 @@ use commands::codex::{
     switch_codex_provider,
     test_codex_provider_connection,
     update_codex_provider_config,
+    update_codex_reasoning_level,
     validate_codex_path_cmd,
     CodexProcessState,
 };
@@ -480,6 +481,7 @@ fn main() {
             delete_codex_provider_config,
             clear_codex_provider_config,
             test_codex_provider_connection,
+            update_codex_reasoning_level,
             // Codex Usage Statistics
             get_codex_usage_stats,
             // Session Conversion (Claude ↔ Codex)

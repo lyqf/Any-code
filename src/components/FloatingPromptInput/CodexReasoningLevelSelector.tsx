@@ -3,6 +3,7 @@ import { ChevronUp, Check, Brain, Zap, Sparkles, Rocket } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Popover } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { api } from "@/lib/api";
 
 /**
  * Codex reasoning level configuration
@@ -67,23 +68,51 @@ interface CodexReasoningLevelSelectorProps {
   selectedLevel: CodexReasoningLevel | undefined;
   onLevelChange: (level: CodexReasoningLevel) => void;
   disabled?: boolean;
+  /** Whether to persist the level change to config.toml (default: true) */
+  persist?: boolean;
 }
 
 /**
  * CodexReasoningLevelSelector component - Dropdown for selecting reasoning effort level
  * Used with Codex engine to control model inference depth
+ * Automatically persists changes to ~/.codex/config.toml
  */
 export const CodexReasoningLevelSelector: React.FC<CodexReasoningLevelSelectorProps> = ({
   selectedLevel,
   onLevelChange,
   disabled = false,
+  persist = true,
 }) => {
   const [open, setOpen] = React.useState(false);
+  const [isSaving, setIsSaving] = React.useState(false);
 
   // Find selected level or default
   const selectedLevelData = CODEX_REASONING_LEVELS.find(l => l.id === selectedLevel)
     || CODEX_REASONING_LEVELS.find(l => l.isDefault)
     || CODEX_REASONING_LEVELS[1]; // medium as fallback
+
+  /**
+   * Handle level change with optional persistence to config.toml
+   */
+  const handleLevelChange = async (level: CodexReasoningLevel) => {
+    // Update local state immediately
+    onLevelChange(level);
+    setOpen(false);
+
+    // Persist to config.toml if enabled
+    if (persist) {
+      setIsSaving(true);
+      try {
+        await api.updateCodexReasoningLevel(level);
+        console.log(`[CodexReasoningLevel] Successfully saved level: ${level}`);
+      } catch (error) {
+        console.error('[CodexReasoningLevel] Failed to persist level:', error);
+        // Note: We don't revert the UI state as the local change is still valid for the session
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  };
 
   return (
     <Popover
@@ -91,7 +120,7 @@ export const CodexReasoningLevelSelector: React.FC<CodexReasoningLevelSelectorPr
         <Button
           variant="outline"
           size="sm"
-          disabled={disabled}
+          disabled={disabled || isSaving}
           className="h-8 gap-2 min-w-[120px] justify-start border-border/50 bg-background/50 hover:bg-accent/50"
         >
           {selectedLevelData.icon}
@@ -110,10 +139,7 @@ export const CodexReasoningLevelSelector: React.FC<CodexReasoningLevelSelectorPr
             return (
               <button
                 key={level.id}
-                onClick={() => {
-                  onLevelChange(level.id);
-                  setOpen(false);
-                }}
+                onClick={() => handleLevelChange(level.id)}
                 className={cn(
                   "w-full flex items-start gap-3 p-3 rounded-md transition-colors text-left group",
                   "hover:bg-accent",

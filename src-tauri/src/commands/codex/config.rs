@@ -1203,7 +1203,7 @@ pub async fn switch_codex_provider(config: CodexProviderConfig) -> Result<String
 
         if let Ok(mut existing_table) = toml::from_str::<toml::Table>(&existing_content) {
             // Provider-specific keys that will be overwritten
-            let provider_keys = ["model_provider", "model", "model_providers"];
+            let provider_keys = ["model_provider", "model", "model_providers", "model_reasoning_effort"];
 
             if let Some(new_table) = new_config_table {
                 // Remove provider-specific keys from existing config
@@ -1431,4 +1431,67 @@ pub async fn test_codex_provider_connection(
         }
         Err(e) => Err(format!("Connection test failed: {}", e)),
     }
+}
+
+/// Update Codex reasoning effort level in config.toml
+/// This updates the model_reasoning_effort field in ~/.codex/config.toml
+/// Supports both Native Windows and WSL modes
+#[tauri::command]
+pub async fn update_codex_reasoning_level(level: String) -> Result<String, String> {
+    log::info!("[Codex] Updating reasoning level to: {}", level);
+
+    // Validate level
+    let valid_levels = ["low", "medium", "high", "extra_high"];
+    if !valid_levels.contains(&level.as_str()) {
+        return Err(format!(
+            "Invalid reasoning level: {}. Valid values are: low, medium, high, extra_high",
+            level
+        ));
+    }
+
+    let is_wsl_mode = should_use_wsl_config();
+    log::info!("[Codex] WSL mode: {}", is_wsl_mode);
+
+    let config_dir = get_codex_config_dir()?;
+    let config_path = get_codex_config_path()?;
+
+    log::info!("[Codex] Config directory: {:?}", config_dir);
+    log::info!("[Codex] Config path: {:?}", config_path);
+
+    // Ensure config directory exists
+    if !config_dir.exists() {
+        log::info!("[Codex] Creating config directory: {:?}", config_dir);
+        fs::create_dir_all(&config_dir)
+            .map_err(|e| format!("Failed to create .codex directory at {:?}: {}", config_dir, e))?;
+    }
+
+    // Read existing config or create new one
+    let mut config_table: toml::Table = if config_path.exists() {
+        let existing_content = fs::read_to_string(&config_path)
+            .map_err(|e| format!("Failed to read config.toml: {}", e))?;
+        toml::from_str(&existing_content).unwrap_or_else(|_| toml::Table::new())
+    } else {
+        toml::Table::new()
+    };
+
+    // Update reasoning level
+    config_table.insert(
+        "model_reasoning_effort".to_string(),
+        toml::Value::String(level.clone()),
+    );
+
+    // Write back to config.toml
+    let final_config = toml::to_string_pretty(&config_table)
+        .map_err(|e| format!("Failed to serialize config: {}", e))?;
+    fs::write(&config_path, &final_config)
+        .map_err(|e| format!("Failed to write config.toml: {}", e))?;
+
+    log::info!("[Codex] Successfully updated reasoning level to: {}", level);
+
+    let mode_info = if is_wsl_mode { " (WSL)" } else { "" };
+    Ok(format!(
+        "Successfully updated reasoning level to: {}{}",
+        level,
+        mode_info
+    ))
 }

@@ -3643,6 +3643,20 @@ export const api = {
     }
   },
 
+  /**
+   * Updates Codex reasoning effort level in config.toml
+   * @param level - The reasoning level: 'low', 'medium', 'high', or 'extra_high'
+   * @returns Promise resolving to success message
+   */
+  async updateCodexReasoningLevel(level: 'low' | 'medium' | 'high' | 'extra_high'): Promise<string> {
+    try {
+      return await invoke<string>("update_codex_reasoning_level", { level });
+    } catch (error) {
+      console.error("Failed to update Codex reasoning level:", error);
+      throw error;
+    }
+  },
+
   // ============================================================================
   // GEMINI PROVIDER MANAGEMENT
   // ============================================================================
