@@ -239,6 +239,21 @@ export function useSessionLifecycle(config: UseSessionLifecycleConfig): UseSessi
         return;
       }
 
+      // 🔧 FIX: 区分"会话不存在"和真正的加载错误
+      // 当会话文件不存在时（通常是从 localStorage 恢复的无效会话或新建会话），
+      // 应该正常继续而不是显示错误，让用户可以开始新会话
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      const isSessionNotFound = errorMessage.includes('Session file not found') ||
+                                errorMessage.includes('not found') ||
+                                errorMessage.includes('Session ID not found');
+
+      if (isSessionNotFound) {
+        console.debug('[useSessionLifecycle] Session history not found (new session or deleted), continuing without error:', currentSessionId);
+        // 不显示错误，让用户可以正常使用（开始新会话）
+        setIsLoading(false);
+        return;
+      }
+
       setError("加载会话历史记录失败");
       setIsLoading(false);
     }
