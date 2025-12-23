@@ -69,6 +69,11 @@ interface ClaudeCodeSessionProps {
    */
   onEngineChange?: (engine: 'claude' | 'codex' | 'gemini') => void;
   /**
+   * 🔧 FIX: Callback when session info is extracted (for persisting new session to tab)
+   * Called when a new session receives its sessionId and projectId from backend
+   */
+  onSessionInfoChange?: (info: { sessionId: string; projectId: string; projectPath: string; engine?: 'claude' | 'codex' | 'gemini' }) => void;
+  /**
    * Whether this session is currently active (for event listener management)
    */
   isActive?: boolean;
@@ -87,6 +92,7 @@ const ClaudeCodeSessionInner: React.FC<ClaudeCodeSessionProps> = ({
   onStreamingChange,
   onProjectPathChange,
   onEngineChange,
+  onSessionInfoChange,
   isActive = true, // 默认为活跃状态，保持向后兼容
 }) => {
   const { t } = useTranslation();
@@ -191,6 +197,20 @@ const ClaudeCodeSessionInner: React.FC<ClaudeCodeSessionProps> = ({
       onEngineChange(executionEngineConfig.engine);
     }
   }, [executionEngineConfig.engine, onEngineChange]);
+
+  // 🔧 FIX: Notify parent when session info is extracted (for new session persistence)
+  // This fixes the issue where new session messages are lost after route switch
+  useEffect(() => {
+    if (extractedSessionInfo && onSessionInfoChange && projectPath) {
+      console.debug('[ClaudeCodeSession] Session info extracted, notifying parent:', extractedSessionInfo);
+      onSessionInfoChange({
+        sessionId: extractedSessionInfo.sessionId,
+        projectId: extractedSessionInfo.projectId,
+        projectPath: projectPath,
+        engine: extractedSessionInfo.engine,
+      });
+    }
+  }, [extractedSessionInfo, projectPath, onSessionInfoChange]);
 
   const displayableMessages = useDisplayableMessages(messages, {
     hideWarmupMessages: filterConfig.hideWarmupMessages

@@ -24,7 +24,7 @@ const TabSessionWrapperComponent: React.FC<TabSessionWrapperProps> = ({
   isActive,
 }) => {
   // ✅ FIXED: Removed unused 'tab' variable to fix TS6133
-  const { updateStreaming, setCleanup, updateTitle, updateEngine } = useTabSession(tabId);
+  const { updateStreaming, setCleanup, updateTitle, updateEngine, updateSession } = useTabSession(tabId);
   const sessionRef = useRef<{ hasChanges: boolean; sessionId: string | null }>({
     hasChanges: false,
     sessionId: null,
@@ -76,6 +76,13 @@ const TabSessionWrapperComponent: React.FC<TabSessionWrapperProps> = ({
     updateEngine(engine);
   }, [updateEngine]);
 
+  // 🔧 FIX: Handle session info change - 持久化新建会话的信息
+  // 解决路由切换后新建会话消息丢失的问题
+  const handleSessionInfoChange = useCallback((info: { sessionId: string; projectId: string; projectPath: string; engine?: 'claude' | 'codex' | 'gemini' }) => {
+    console.debug('[TabSessionWrapper] Session info received, updating tab:', { tabId, info });
+    updateSession(info);
+  }, [tabId, updateSession]);
+
   // 包装 onStreamingChange 以更新标签页状态
   // 🔧 性能修复：使用 useCallback 避免无限渲染循环（从 1236 renders/s 降至 1 render/s）
   const handleStreamingChange = useCallback((isStreaming: boolean, sessionId: string | null) => {
@@ -109,6 +116,7 @@ const TabSessionWrapperComponent: React.FC<TabSessionWrapperProps> = ({
         onStreamingChange={handleStreamingChange}
         onProjectPathChange={handleProjectPathChange}
         onEngineChange={handleEngineChange}
+        onSessionInfoChange={handleSessionInfoChange}
         isActive={isActive}
       />
     </div>

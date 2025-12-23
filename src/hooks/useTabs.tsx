@@ -50,6 +50,8 @@ interface TabContextValue {
   updateTabChanges: (tabId: string, hasChanges: boolean) => void;
   updateTabTitle: (tabId: string, title: string) => void;
   updateTabEngine: (tabId: string, engine: 'claude' | 'codex' | 'gemini') => void;
+  /** 🔧 FIX: 更新标签页的 session 信息（用于新建会话获取到 sessionId 后持久化） */
+  updateTabSession: (tabId: string, sessionInfo: { sessionId: string; projectId: string; projectPath: string; engine?: 'claude' | 'codex' | 'gemini' }) => void;
   getTabById: (tabId: string) => TabSession | undefined;
   getActiveTab: () => TabSession | undefined;
   openSessionInBackground: (session: Session) => { tabId: string; isNew: boolean };
@@ -320,6 +322,42 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     );
   }, []);
 
+  // 🔧 FIX: Update tab session - 更新标签页的会话信息
+  // 用于新建会话在获取到 sessionId 后持久化，解决页面切换后消息丢失问题
+  const updateTabSession = useCallback((
+    tabId: string,
+    sessionInfo: { sessionId: string; projectId: string; projectPath: string; engine?: 'claude' | 'codex' | 'gemini' }
+  ) => {
+    setTabs(prev =>
+      prev.map(tab => {
+        if (tab.id !== tabId) return tab;
+
+        // 如果已经有 session 且 id 相同，不需要更新
+        if (tab.session?.id === sessionInfo.sessionId) return tab;
+
+        // 构建完整的 Session 对象
+        const newSession: Session = {
+          id: sessionInfo.sessionId,
+          project_id: sessionInfo.projectId,
+          project_path: sessionInfo.projectPath,
+          created_at: tab.createdAt,
+          engine: sessionInfo.engine || tab.engine,
+        };
+
+        console.debug('[useTabs] Updating tab session:', { tabId, sessionInfo });
+
+        return {
+          ...tab,
+          type: 'session' as const,
+          session: newSession,
+          projectPath: sessionInfo.projectPath,
+          engine: sessionInfo.engine || tab.engine,
+          lastActiveAt: Date.now(),
+        };
+      })
+    );
+  }, []);
+
   // Get tab by ID
   const getTabById = useCallback((tabId: string): TabSession | undefined => {
     const tab = tabs.find(t => t.id === tabId);
@@ -557,6 +595,7 @@ export const TabProvider: React.FC<TabProviderProps> = ({ children }) => {
     updateTabChanges,
     updateTabTitle,
     updateTabEngine,
+    updateTabSession,
     getTabById,
     getActiveTab,
     openSessionInBackground,
@@ -605,7 +644,7 @@ export const useActiveTab = (): TabSession | undefined => {
  * useTabSession - 获取特定标签页的会话管理钩子
  */
 export const useTabSession = (tabId: string) => {
-  const { getTabById, updateTabChanges, updateTabStreamingStatus, updateTabTitle, updateTabEngine, registerTabCleanup } = useTabs();
+  const { getTabById, updateTabChanges, updateTabStreamingStatus, updateTabTitle, updateTabEngine, updateTabSession, registerTabCleanup } = useTabs();
 
   const tab = getTabById(tabId);
 
@@ -630,6 +669,11 @@ export const useTabSession = (tabId: string) => {
     updateTabEngine(tabId, engine);
   }, [tabId, updateTabEngine]);
 
+  // 🔧 FIX: Update session - 更新会话信息（用于新建会话持久化）
+  const updateSession = useCallback((sessionInfo: { sessionId: string; projectId: string; projectPath: string; engine?: 'claude' | 'codex' | 'gemini' }) => {
+    updateTabSession(tabId, sessionInfo);
+  }, [tabId, updateTabSession]);
+
   // 🔧 NEW: Register cleanup callback
   const setCleanup = useCallback((cleanup: () => Promise<void> | void) => {
     registerTabCleanup(tabId, cleanup);
@@ -642,6 +686,7 @@ export const useTabSession = (tabId: string) => {
     updateTitle,
     updateStreaming,
     updateEngine,
+    updateSession,
     setCleanup,
   };
 };
