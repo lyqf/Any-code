@@ -10,13 +10,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from '@/components/ui/dropdown-menu';
-import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  ContextMenuSeparator,
-} from '@/components/ui/context-menu';
+
 import {
   Tooltip,
   TooltipContent,
@@ -79,6 +73,7 @@ export const TabManager: React.FC<TabManagerProps> = ({
   const [draggedTab, setDraggedTab] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null); // 🔧 NEW: 拖拽悬停的位置
   const [tabToClose, setTabToClose] = useState<string | null>(null); // 🔧 NEW: 待关闭的标签页ID（需要确认）
+  const [contextMenuTab, setContextMenuTab] = useState<string | null>(null); // 🔧 NEW: 右键菜单的标签页ID
   const tabsContainerRef = useRef<HTMLDivElement>(null);
 
   // ✨ Phase 3: Simple initialization flag (no complex state machine)
@@ -251,8 +246,12 @@ export const TabManager: React.FC<TabManagerProps> = ({
                 {tabs.map((tab, index) => {
                   const tabEngine = tab.session?.engine ?? tab.engine ?? 'claude';
                   return (
-                  <ContextMenu key={tab.id}>
-                    <ContextMenuTrigger asChild>
+                  <DropdownMenu 
+                    key={tab.id} 
+                    open={contextMenuTab === tab.id}
+                    onOpenChange={(open) => !open && setContextMenuTab(null)}
+                  >
+                    <DropdownMenuTrigger asChild>
                       <Tooltip>
                         <TooltipTrigger asChild>
                           <motion.div
@@ -271,6 +270,10 @@ export const TabManager: React.FC<TabManagerProps> = ({
                               dragOverIndex === index && draggedTab !== tab.id && "border-primary"
                             )}
                             onClick={() => switchToTab(tab.id)}
+                            onContextMenu={(e) => {
+                              e.preventDefault();
+                              setContextMenuTab(tab.id);
+                            }}
                             draggable
                             onDragStart={() => handleTabDragStart(tab.id)}
                             onDragEnd={handleTabDragEnd}
@@ -400,35 +403,35 @@ export const TabManager: React.FC<TabManagerProps> = ({
                           </div>
                         </TooltipContent>
                       </Tooltip>
-                    </ContextMenuTrigger>
-                    <ContextMenuContent>
-                      <ContextMenuItem onClick={() => createNewTab()}>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="start">
+                      <DropdownMenuItem onClick={() => createNewTab()}>
                         <Plus className="h-4 w-4 mr-2" />
                         {t('tabs.newSession')}
-                      </ContextMenuItem>
-                      <ContextMenuItem onClick={handleCreateNewTabAsWindow}>
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={handleCreateNewTabAsWindow}>
                         <ExternalLink className="h-4 w-4 mr-2" />
                         {t('tabs.newSessionWindow')}
-                      </ContextMenuItem>
-                      <ContextMenuSeparator />
-                      <ContextMenuItem onClick={() => handleCloseTab(tab.id)}>
+                      </DropdownMenuItem>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => handleCloseTab(tab.id)}>
                         <X className="h-4 w-4 mr-2" />
                         {t('tabs.closeTab')}
-                      </ContextMenuItem>
-                      <ContextMenuItem
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         onClick={() => tabs.filter(t => t.id !== tab.id).forEach(t => closeTab(t.id, true))}
                         disabled={tabs.length <= 1}
                       >
                         {t('tabs.closeOtherTabs')}
-                      </ContextMenuItem>
-                      <ContextMenuItem
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
                         onClick={() => tabs.forEach(t => closeTab(t.id, true))}
                         disabled={tabs.length === 0}
                       >
                         {t('tabs.closeAllTabs')}
-                      </ContextMenuItem>
-                    </ContextMenuContent>
-                  </ContextMenu>
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                   );
                 })}
               </AnimatePresence>
